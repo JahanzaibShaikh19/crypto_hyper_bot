@@ -18,7 +18,8 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 # ═══════════════════════════════════════════
 # API KEYS
 # ═══════════════════════════════════════════
-CRYPTOPANIC_API_KEY = os.getenv("CRYPTOPANIC_API_KEY", "")
+# CryptoPanic free API discontinued April 1, 2026 — removed
+# News now comes from free RSS: CoinDesk, CoinTelegraph, Decrypt, TheBlock
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
 BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY", "")
 
@@ -124,7 +125,15 @@ BINANCE_BASE_URL       = "https://api.binance.com"
 COINGECKO_BASE_URL     = "https://api.coingecko.com/api/v3"
 FEAR_GREED_URL         = "https://api.alternative.me/fng/?limit=2"
 MEMPOOL_BASE_URL       = "https://mempool.space/api"
-CRYPTOPANIC_BASE_URL   = "https://cryptopanic.com/api/v1"
+
+# Free RSS news sources (CryptoPanic discontinued April 2026)
+NEWS_RSS_SOURCES = {
+    "coindesk":        "https://www.coindesk.com/arc/outboundfeeds/rss/",
+    "cointelegraph":   "https://cointelegraph.com/rss",
+    "decrypt":         "https://decrypt.co/feed",
+    "theblock":        "https://www.theblock.co/rss.xml",
+    "bitcoinmagazine": "https://bitcoinmagazine.com/.rss/full/",
+}
 
 # Nitter instances (fallback list — some may be down)
 NITTER_INSTANCES = [

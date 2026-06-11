@@ -1,145 +1,191 @@
 """
-data/news_fetcher.py — News fetching from CryptoPanic and Binance RSS.
+data/news_fetcher.py — Crypto news from 100% FREE sources.
 
-CryptoPanic provides community-voted crypto news with bullish/bearish votes.
-Binance announcements RSS alerts on listings/delistings.
+CryptoPanic free API discontinued April 2026.
+Replaced with 3 zero-cost alternatives:
+
+  1. CoinDesk RSS        — Professional crypto journalism
+  2. Cointelegraph RSS   — High volume crypto news
+  3. Decrypt RSS         — Quality crypto/web3 news
+  4. The Block RSS       — Institutional-grade news
+  5. Binance Announcements RSS — Listings/delistings (unchanged)
+
+All RSS feeds — zero API keys, zero cost, no rate limits.
+NLP sentiment scoring via TextBlob replaces community vote ratio.
 """
 import asyncio
 import feedparser
 import httpx
 from loguru import logger
 
-from config import CRYPTOPANIC_API_KEY, CRYPTOPANIC_BASE_URL, CACHE_NEWS
+from config import CACHE_NEWS
 from utils.cache import cache_get, cache_set
-from utils.rate_limiter import CRYPTOPANIC_LIMITER, RSS_LIMITER
-from utils.nlp_helper import combined_score
+from utils.rate_limiter import RSS_LIMITER
+from utils.nlp_helper import combined_score, sentiment_score
 
+
+# ═══════════════════════════════════════════
+# FREE RSS NEWS SOURCES (replacing CryptoPanic)
+# ═══════════════════════════════════════════
+NEWS_RSS_FEEDS = {
+    "coindesk":      "https://www.coindesk.com/arc/outboundfeeds/rss/",
+    "cointelegraph": "https://cointelegraph.com/rss",
+    "decrypt":       "https://decrypt.co/feed",
+    "theblock":      "https://www.theblock.co/rss.xml",
+    "bitcoinmagazine": "https://bitcoinmagazine.com/.rss/full/",
+}
 
 BINANCE_RSS = "https://www.binance.com/en/support/announcement/rss"
 
+# Coin symbol → keywords to filter coin-specific news
+COIN_KEYWORDS = {
+    "BTCUSDT":  ["bitcoin", "btc", "satoshi", "lightning network", "halving"],
+    "ETHUSDT":  ["ethereum", "eth", "vitalik", "eip", "dencun", "pectra"],
+    "SOLUSDT":  ["solana", "sol", "phantom", "jito"],
+    "BNBUSDT":  ["binance", "bnb", "bnb chain", "bsc"],
+    "AVAXUSDT": ["avalanche", "avax", "subnet"],
+    "ADAUSDT":  ["cardano", "ada", "iohk", "hoskinson"],
+    "DOTUSDT":  ["polkadot", "dot", "parachain", "gavin wood"],
+    "LINKUSDT": ["chainlink", "link", "oracle"],
+    "SOLUSDT":  ["solana", "sol"],
+    "NEARUSDT": ["near protocol", "near"],
+    "ARBUSDT":  ["arbitrum", "arb"],
+    "OPUSDT":   ["optimism", "op "],
+}
 
-async def fetch_cryptopanic(symbol: str = None, filter_type: str = "trending") -> list:
+
+async def _fetch_rss_feed(source_name: str, url: str) -> list:
+    """Fetch and parse a single RSS feed. Returns raw entries."""
+    await RSS_LIMITER.acquire()
+    try:
+        feed = await asyncio.get_event_loop().run_in_executor(
+            None, feedparser.parse, url
+        )
+        if feed.bozo and not feed.entries:
+            logger.debug(f"RSS parse warning for {source_name}: {feed.bozo_exception}")
+        return feed.entries[:25]
+    except Exception as e:
+        logger.debug(f"RSS fetch error ({source_name}): {e}")
+        return []
+
+
+def _parse_entry(entry: object, source: str) -> dict:
+    """Parse a feedparser entry into a normalized news item."""
+    title   = entry.get("title", "").strip()
+    summary = entry.get("summary", entry.get("description", "")).strip()
+    link    = entry.get("link", "")
+    published = entry.get("published", "")
+
+    # Strip HTML tags from summary
+    import re
+    summary_clean = re.sub(r"<[^>]+>", " ", summary).strip()
+
+    full_text = f"{title} {summary_clean}"
+    nlp = combined_score(full_text)
+    recency = _recency_weight(published)
+
+    return {
+        "title":            title,
+        "summary":          summary_clean[:200],
+        "published_at":     published,
+        "link":             link,
+        "source":           source,
+        "sentiment":        nlp["final"],
+        "recency_weight":   recency,
+        "weighted_sentiment": nlp["final"] * recency,
+        "bearish_keywords": nlp["bearish_keywords"],
+        "bullish_keywords": nlp["bullish_keywords"],
+        "has_emergency":    nlp["has_emergency"],
+        # No community votes anymore — NLP is primary
+        "vote_ratio":       0.5 + (nlp["final"] * 0.5),  # synthetic proxy
+    }
+
+
+async def fetch_all_news_rss() -> list:
     """
-    Fetch recent crypto news from CryptoPanic.
-    Includes community vote ratio (bullish/bearish).
-
-    symbol: filter by specific coin (e.g. "BTC"). None = general market.
-    filter_type: 'trending' | 'hot' | 'important' | 'bullish' | 'bearish'
-
-    Returns list of news items with sentiment scores.
+    Fetch all news RSS feeds in parallel.
+    Returns deduplicated list of news items sorted by recency.
     """
-    coin_slug = None
-    if symbol:
-        coin_map = {
-            "BTCUSDT": "BTC", "ETHUSDT": "ETH", "SOLUSDT": "SOL",
-            "BNBUSDT": "BNB", "AVAXUSDT": "AVAX", "ADAUSDT": "ADA",
-        }
-        coin_slug = coin_map.get(symbol, symbol.replace("USDT", ""))
-
-    cache_key = f"cryptopanic:{coin_slug or 'market'}:{filter_type}"
+    cache_key = "news:rss:all"
     cached = cache_get(cache_key)
     if cached is not None:
         return cached
 
-    await CRYPTOPANIC_LIMITER.acquire()
+    # Fetch all feeds simultaneously
+    tasks = [
+        _fetch_rss_feed(name, url)
+        for name, url in NEWS_RSS_FEEDS.items()
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    params = {
-        "auth_token": CRYPTOPANIC_API_KEY or "free_tier",
-        "public": "true",
-        "filter": filter_type,
-        "kind": "news",
-        "limit": 20,
-    }
-    if coin_slug:
-        params["currencies"] = coin_slug
+    all_items = []
+    seen_titles = set()
 
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            url = f"{CRYPTOPANIC_BASE_URL}/posts/"
-            resp = await client.get(url, params=params)
-            resp.raise_for_status()
-            data = resp.json()
-    except Exception as e:
-        logger.warning(f"CryptoPanic error: {e}")
-        return []
+    for source_name, entries in zip(NEWS_RSS_FEEDS.keys(), results):
+        if isinstance(entries, Exception):
+            logger.debug(f"Feed {source_name} failed: {entries}")
+            continue
+        for entry in entries:
+            item = _parse_entry(entry, source_name)
+            if not item["title"]:
+                continue
+            # Deduplicate by title similarity (first 60 chars)
+            title_key = item["title"][:60].lower()
+            if title_key in seen_titles:
+                continue
+            seen_titles.add(title_key)
+            all_items.append(item)
 
-    news_items = []
-    for item in data.get("results", [])[:20]:
-        title  = item.get("title", "")
-        votes  = item.get("votes", {})
-        created = item.get("published_at", "")
+    # Sort by recency weight (freshest first)
+    all_items.sort(key=lambda x: x["recency_weight"], reverse=True)
 
-        positive_votes = votes.get("positive", 0)
-        negative_votes = votes.get("negative", 0)
-        total_votes    = positive_votes + negative_votes
-
-        # Vote ratio: 0-1, 0.5 = neutral, >0.65 = bullish, <0.35 = bearish
-        vote_ratio = positive_votes / total_votes if total_votes > 0 else 0.5
-
-        # NLP fallback if no votes
-        nlp = combined_score(title)
-
-        if total_votes > 5:
-            # Use vote ratio as primary signal
-            sentiment = (vote_ratio - 0.5) * 2  # Normalize to -1..+1
-        else:
-            # Fall back to NLP
-            sentiment = nlp["final"]
-
-        # Recency weighting
-        recency_weight = _recency_weight(created)
-
-        news_items.append({
-            "title": title,
-            "published_at": created,
-            "vote_ratio": vote_ratio,
-            "positive_votes": positive_votes,
-            "negative_votes": negative_votes,
-            "sentiment": sentiment,
-            "recency_weight": recency_weight,
-            "weighted_sentiment": sentiment * recency_weight,
-            "bearish_keywords": nlp["bearish_keywords"],
-            "bullish_keywords": nlp["bullish_keywords"],
-            "has_emergency": nlp["has_emergency"],
-            "source": "cryptopanic",
-        })
-
-    cache_set(cache_key, news_items, CACHE_NEWS)
-    return news_items
+    cache_set(cache_key, all_items, CACHE_NEWS)
+    logger.info(f"News RSS: fetched {len(all_items)} items from {len(NEWS_RSS_FEEDS)} sources")
+    return all_items
 
 
-def _recency_weight(published_at: str) -> float:
+async def fetch_news_for_symbol(symbol: str) -> list:
     """
-    Newer news = higher weight.
-    <1 hour = 3x, <6 hours = 2x, <24 hours = 1x, older = 0.3x
+    Filter news items relevant to a specific coin.
+    Uses keyword matching on title + summary.
     """
-    import datetime
-    try:
-        from dateutil import parser as dateutil_parser
-        dt = dateutil_parser.parse(published_at)
-        if dt.tzinfo is None:
-            import pytz
-            dt = pytz.UTC.localize(dt)
-        age_hours = (datetime.datetime.now(pytz.UTC) - dt).total_seconds() / 3600
+    all_news = await fetch_all_news_rss()
 
-        if age_hours < 1:
-            return 3.0
-        elif age_hours < 6:
-            return 2.0
-        elif age_hours < 24:
-            return 1.0
-        else:
-            return 0.3
-    except Exception:
-        return 1.0
+    keywords = COIN_KEYWORDS.get(symbol, [])
+    if not keywords:
+        # Fallback: use coin name from symbol
+        coin = symbol.replace("USDT", "").lower()
+        keywords = [coin]
+
+    relevant = []
+    for item in all_news:
+        text = (item["title"] + " " + item["summary"]).lower()
+        if any(kw in text for kw in keywords):
+            relevant.append(item)
+
+    # Always include general market news (top 5 most recent)
+    general = [i for i in all_news if i not in relevant][:5]
+
+    return relevant + general
+
+
+# Keep this name so sentiment_scorer.py import doesn't break
+async def fetch_cryptopanic(symbol: str = None, filter_type: str = "trending") -> list:
+    """
+    Drop-in replacement for the old fetch_cryptopanic().
+    Now fetches from free RSS feeds instead.
+    CryptoPanic free API was discontinued April 1, 2026.
+    """
+    if symbol:
+        return await fetch_news_for_symbol(symbol)
+    else:
+        return await fetch_all_news_rss()
 
 
 async def fetch_binance_announcements() -> list:
     """
     Monitor Binance announcements RSS for listings/delistings.
-
-    Binance listing = instant +2 bullish signal for that coin.
-    Delisting = instant -2 bearish signal.
+    Unchanged — Binance RSS is still free and working.
     """
     cache_key = "binance:rss"
     cached = cache_get(cache_key)
@@ -149,8 +195,6 @@ async def fetch_binance_announcements() -> list:
     await RSS_LIMITER.acquire()
 
     try:
-        # feedparser can be slow, run in thread
-        import asyncio
         feed = await asyncio.get_event_loop().run_in_executor(
             None, feedparser.parse, BINANCE_RSS
         )
@@ -160,41 +204,41 @@ async def fetch_binance_announcements() -> list:
 
     items = []
     for entry in feed.entries[:20]:
-        title   = entry.get("title", "")
-        summary = entry.get("summary", "")
-        link    = entry.get("link", "")
+        title     = entry.get("title", "")
+        summary   = entry.get("summary", "")
+        link      = entry.get("link", "")
         published = entry.get("published", "")
 
         title_lower = (title + " " + summary).lower()
 
-        # Detect announcement type
-        is_listing = any(kw in title_lower for kw in
-                         ["will list", "lists", "trading pairs", "new listing", "opens trading"])
+        is_listing   = any(kw in title_lower for kw in
+                           ["will list", "lists", "trading pairs",
+                            "new listing", "opens trading", "adds"])
         is_delisting = any(kw in title_lower for kw in
-                           ["delist", "remove", "discontinue"])
-        is_update = any(kw in title_lower for kw in
-                        ["maintenance", "update", "upgrade", "scheduled"])
+                           ["delist", "remove", "discontinue", "removal"])
+        is_update    = any(kw in title_lower for kw in
+                           ["maintenance", "update", "upgrade", "scheduled"])
 
         if is_listing:
-            signal_type = "LISTING"
+            signal_type   = "LISTING"
             score_override = 2.0
         elif is_delisting:
-            signal_type = "DELISTING"
+            signal_type   = "DELISTING"
             score_override = -2.0
         elif is_update:
-            signal_type = "UPDATE"
+            signal_type   = "UPDATE"
             score_override = 0.0
         else:
-            signal_type = "GENERAL"
+            signal_type   = "GENERAL"
             score_override = None
 
         items.append({
-            "title": title,
-            "published": published,
-            "link": link,
-            "signal_type": signal_type,
+            "title":         title,
+            "published":     published,
+            "link":          link,
+            "signal_type":   signal_type,
             "score_override": score_override,
-            "source": "binance_rss",
+            "source":        "binance_rss",
         })
 
     cache_set(cache_key, items, CACHE_NEWS)
@@ -203,28 +247,34 @@ async def fetch_binance_announcements() -> list:
 
 def aggregate_news_score(news_items: list) -> dict:
     """
-    Aggregate multiple news items into a single score.
-    Emergency (bearish keyword) overrides everything.
+    Aggregate news items into a single pipeline score.
+    Emergency bearish keywords override everything else.
     """
     if not news_items:
-        return {"score": 0.0, "emergency": False, "emergency_reason": None, "summary": []}
+        return {
+            "score": 0.0,
+            "emergency": False,
+            "emergency_reason": None,
+            "summary": [],
+        }
 
-    # Check for emergency first
+    # Emergency check first — one hack headline kills everything
     emergency_items = [n for n in news_items if n.get("has_emergency")]
     if emergency_items:
         worst = sorted(emergency_items, key=lambda x: x["sentiment"])[0]
         return {
-            "score": -2.0,
-            "emergency": True,
-            "emergency_reason": worst["title"],
+            "score":             -2.0,
+            "emergency":         True,
+            "emergency_reason":  worst["title"],
             "emergency_keywords": worst.get("bearish_keywords", []),
-            "summary": [n["title"] for n in news_items[:3]],
+            "summary":           [n["title"] for n in news_items[:3]],
         }
 
-    # Weighted average by recency
-    total_weight = sum(n.get("recency_weight", 1) for n in news_items)
+    # Weighted average (recency × sentiment)
+    total_weight = sum(n.get("recency_weight", 1.0) for n in news_items)
     if total_weight == 0:
-        return {"score": 0.0, "emergency": False, "emergency_reason": None, "summary": []}
+        return {"score": 0.0, "emergency": False,
+                "emergency_reason": None, "summary": []}
 
     weighted_sum = sum(
         n.get("weighted_sentiment", n.get("sentiment", 0))
@@ -232,15 +282,57 @@ def aggregate_news_score(news_items: list) -> dict:
     )
 
     avg_score = weighted_sum / total_weight
-    # Scale from [-1,1] to [-4,+4] for pipeline range
-    scaled = avg_score * 4
+    scaled    = avg_score * 4   # [-1,+1] → [-4,+4]
+
+    # Top 3 headlines sorted by freshness
+    top_headlines = [
+        n["title"] for n in sorted(
+            news_items,
+            key=lambda x: x.get("recency_weight", 1.0),
+            reverse=True,
+        )[:3]
+    ]
+
+    # Source breakdown for transparency
+    sources_used = list({n["source"] for n in news_items})
 
     return {
-        "score": max(-4, min(4, scaled)),
-        "emergency": False,
+        "score":           max(-4.0, min(4.0, scaled)),
+        "emergency":       False,
         "emergency_reason": None,
-        "avg_vote_ratio": sum(n.get("vote_ratio", 0.5) for n in news_items) / len(news_items),
-        "summary": [n["title"] for n in sorted(
-            news_items, key=lambda x: x.get("recency_weight", 1), reverse=True
-        )[:3]],
+        "avg_sentiment":   round(avg_score, 3),
+        "sources":         sources_used,
+        "item_count":      len(news_items),
+        "summary":         top_headlines,
     }
+
+
+def _recency_weight(published_at: str) -> float:
+    """
+    Newer news = higher weight.
+    <1h = 3×  |  <6h = 2×  |  <24h = 1×  |  older = 0.3×
+    """
+    import datetime
+    try:
+        import pytz
+        from email.utils import parsedate_to_datetime
+        try:
+            dt = parsedate_to_datetime(published_at)
+        except Exception:
+            from dateutil import parser as dp
+            dt = dp.parse(published_at)
+
+        if dt.tzinfo is None:
+            dt = pytz.UTC.localize(dt)
+
+        age_hours = (
+            datetime.datetime.now(pytz.UTC) - dt
+        ).total_seconds() / 3600
+
+        if age_hours < 1:   return 3.0
+        if age_hours < 6:   return 2.0
+        if age_hours < 24:  return 1.0
+        return 0.3
+
+    except Exception:
+        return 1.0
