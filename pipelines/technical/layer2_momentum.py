@@ -10,8 +10,8 @@ Divergences are the most powerful pattern in crypto momentum.
 Score range: -1.5 to +1.5
 """
 import pandas as pd
-import numpy as np
-import pandas_ta as ta
+from ta.momentum import RSIIndicator
+from ta.trend import EMAIndicator, MACD
 from loguru import logger
 from config import RSI_PERIOD, MACD_FAST, MACD_SLOW, MACD_SIGNAL
 
@@ -30,7 +30,7 @@ def analyze_rsi(df_1h: pd.DataFrame) -> dict:
         return {"score": 0, "rsi": 50, "divergence": None}
 
     close = df_1h["close"]
-    rsi_series = ta.rsi(close, length=RSI_PERIOD)
+    rsi_series = RSIIndicator(close=close, window=RSI_PERIOD).rsi()
 
     if rsi_series is None or rsi_series.isna().all():
         return {"score": 0, "rsi": 50, "divergence": None}
@@ -146,20 +146,19 @@ def analyze_macd(df_1h: pd.DataFrame) -> dict:
         return {"score": 0, "histogram": 0, "signal": "NEUTRAL"}
 
     close = df_1h["close"]
-    macd_df = ta.macd(close, fast=MACD_FAST, slow=MACD_SLOW, signal=MACD_SIGNAL)
+    macd_ind = MACD(close=close, window_slow=MACD_SLOW, window_fast=MACD_FAST, window_sign=MACD_SIGNAL)
+    
+    macd_diff = macd_ind.macd_diff()
+    macd_line_series = macd_ind.macd()
+    macd_signal_series = macd_ind.macd_signal()
 
-    if macd_df is None or macd_df.empty:
+    if macd_diff is None or macd_diff.isna().all():
         return {"score": 0, "histogram": 0, "signal": "NEUTRAL"}
 
-    # pandas_ta MACD column names
-    hist_col   = [c for c in macd_df.columns if "h" in c.lower()][0]
-    macd_col   = [c for c in macd_df.columns if c.lower().startswith("macd_")][0]
-    signal_col = [c for c in macd_df.columns if "s" in c.lower() and c != macd_col][0]
-
-    hist_current = macd_df[hist_col].iloc[-1]
-    hist_prev    = macd_df[hist_col].iloc[-3]
-    macd_line    = macd_df[macd_col].iloc[-1]
-    signal_line  = macd_df[signal_col].iloc[-1]
+    hist_current = macd_diff.iloc[-1]
+    hist_prev    = macd_diff.iloc[-3]
+    macd_line    = macd_line_series.iloc[-1]
+    signal_line  = macd_signal_series.iloc[-1]
 
     if pd.isna(hist_current) or pd.isna(hist_prev):
         return {"score": 0, "histogram": 0, "signal": "NEUTRAL"}
@@ -215,8 +214,8 @@ def analyze_entry_trigger(df_15m: pd.DataFrame) -> dict:
         return {"score": 0, "signal": "NEUTRAL", "ema_9": 0, "ema_21": 0}
 
     close = df_15m["close"]
-    ema_9  = ta.ema(close, length=9)
-    ema_21 = ta.ema(close, length=21)
+    ema_9  = EMAIndicator(close=close, window=9).ema_indicator()
+    ema_21 = EMAIndicator(close=close, window=21).ema_indicator()
 
     if ema_9 is None or ema_21 is None:
         return {"score": 0, "signal": "NEUTRAL"}

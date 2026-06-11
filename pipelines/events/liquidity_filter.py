@@ -20,8 +20,8 @@ def analyze_liquidity(df_1h: pd.DataFrame = None) -> dict:
     # ATR-based volatility check
     if df_1h is not None and len(df_1h) >= 20:
         try:
-            import pandas_ta as ta
-            atr_series = ta.atr(df_1h["high"], df_1h["low"], df_1h["close"], length=14)
+            from ta.volatility import AverageTrueRange
+            atr_series = AverageTrueRange(high=df_1h["high"], low=df_1h["low"], close=df_1h["close"], window=14).average_true_range()
             if atr_series is not None and len(atr_series) >= 20:
                 current_atr = atr_series.iloc[-1]
                 avg_atr = atr_series.iloc[-20:].mean()

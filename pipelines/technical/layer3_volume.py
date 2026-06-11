@@ -11,8 +11,7 @@ VWAP above/below = institutional benchmark.
 Score range: -1 to +1
 """
 import pandas as pd
-import numpy as np
-import pandas_ta as ta
+from ta.volume import OnBalanceVolumeIndicator
 from loguru import logger
 
 
@@ -32,7 +31,7 @@ def analyze_obv(df_4h: pd.DataFrame) -> dict:
     close  = df_4h["close"]
     volume = df_4h["volume"]
 
-    obv_series = ta.obv(close, volume)
+    obv_series = OnBalanceVolumeIndicator(close=close, volume=volume).on_balance_volume()
     if obv_series is None:
         return {"score": 0, "trend": "NEUTRAL", "divergence": None}
 

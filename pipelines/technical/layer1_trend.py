@@ -10,8 +10,7 @@ EMA stack alignment + Market Structure (BOS/CHoCH) + Price patterns.
 Score range: -1.5 to +1.5
 """
 import pandas as pd
-import numpy as np
-import pandas_ta as ta
+from ta.trend import EMAIndicator
 from loguru import logger
 from config import EMA_FAST, EMA_MID, EMA_SLOW
 
@@ -30,9 +29,9 @@ def analyze_ema_stack(df: pd.DataFrame) -> dict:
         return {"score": 0, "label": "INSUFFICIENT_DATA", "ema_21": 0, "ema_50": 0, "ema_200": 0}
 
     close = df["close"]
-    ema_21  = ta.ema(close, length=EMA_FAST).iloc[-1]
-    ema_50  = ta.ema(close, length=EMA_MID).iloc[-1]
-    ema_200 = ta.ema(close, length=EMA_SLOW).iloc[-1]
+    ema_21  = EMAIndicator(close=close, window=EMA_FAST).ema_indicator().iloc[-1]
+    ema_50  = EMAIndicator(close=close, window=EMA_MID).ema_indicator().iloc[-1]
+    ema_200 = EMAIndicator(close=close, window=EMA_SLOW).ema_indicator().iloc[-1]
     current_price = close.iloc[-1]
 
     if pd.isna(ema_21) or pd.isna(ema_50) or pd.isna(ema_200):
@@ -151,7 +150,6 @@ def analyze_market_structure(df: pd.DataFrame, lookback: int = 10) -> dict:
 def analyze_candlestick_patterns(df: pd.DataFrame) -> dict:
     """
     Detect key candlestick patterns on the most recent candles.
-    Uses pandas_ta for pattern detection.
 
     Bullish Engulfing 4H = +0.5
     Bearish Engulfing 4H = -0.5
@@ -247,7 +245,7 @@ def analyze_macro_filter(df_1d: pd.DataFrame) -> dict:
         return {"score": 0, "above_ema_200": None, "label": "UNKNOWN"}
 
     close = df_1d["close"]
-    ema_200 = ta.ema(close, length=EMA_SLOW).iloc[-1]
+    ema_200 = EMAIndicator(close=close, window=EMA_SLOW).ema_indicator().iloc[-1]
     current = close.iloc[-1]
 
     if pd.isna(ema_200):

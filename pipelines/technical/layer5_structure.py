@@ -9,13 +9,12 @@ Proximity to S/R, ATR expansion/contraction, BTC dominance filter.
 Score range: -1 to +1
 """
 import pandas as pd
-import numpy as np
-import pandas_ta as ta
+from ta.volatility import AverageTrueRange
 from loguru import logger
 from config import ATR_PERIOD, PIVOT_PERIOD
 
 
-def calculate_pivot_points(df: pd.DataFrame) -> dict:
+def calculate_pivot_points(df: pd.DataFrame, atr: float = None) -> dict:
     """
     Classic pivot points: P, R1, R2, S1, S2.
     Uses previous day's OHLC.
@@ -39,7 +38,10 @@ def calculate_pivot_points(df: pd.DataFrame) -> dict:
     s2 = pivot - (high - low)
 
     current = df["close"].iloc[-1]
-    atr = calculate_atr_value(df)
+    
+    # Avoid recalculating ATR if it was passed in
+    if atr is None:
+        atr = calculate_atr_value(df)
 
     levels = {"P": pivot, "R1": r1, "R2": r2, "S1": s1, "S2": s2}
     proximity_threshold = atr * 0.3 if atr > 0 else pivot * 0.005
@@ -86,7 +88,7 @@ def calculate_atr_value(df: pd.DataFrame) -> float:
     """Calculate current ATR value."""
     if df is None or len(df) < ATR_PERIOD:
         return 0.0
-    atr_series = ta.atr(df["high"], df["low"], df["close"], length=ATR_PERIOD)
+    atr_series = AverageTrueRange(high=df["high"], low=df["low"], close=df["close"], window=ATR_PERIOD).average_true_range()
     if atr_series is None or atr_series.empty:
         return 0.0
     val = atr_series.iloc[-1]
@@ -104,7 +106,7 @@ def analyze_atr_context(df: pd.DataFrame) -> dict:
     if df is None or len(df) < ATR_PERIOD + 10:
         return {"score": 0, "condition": "UNKNOWN", "expanding": False}
 
-    atr_series = ta.atr(df["high"], df["low"], df["close"], length=ATR_PERIOD)
+    atr_series = AverageTrueRange(high=df["high"], low=df["low"], close=df["close"], window=ATR_PERIOD).average_true_range()
     if atr_series is None or len(atr_series) < 10:
         return {"score": 0, "condition": "UNKNOWN", "expanding": False}
 
@@ -187,8 +189,8 @@ def score_layer5(df_4h: pd.DataFrame, btc_dom_data: dict, symbol: str) -> dict:
     if df_4h is None:
         return {"score": 0.0, "components": {}, "error": "No 4H data"}
 
-    pivots  = calculate_pivot_points(df_4h)
     atr     = analyze_atr_context(df_4h)
+    pivots  = calculate_pivot_points(df_4h, atr=atr.get("atr", None))
     dom_filter = analyze_btc_dominance_filter(btc_dom_data, symbol)
 
     raw_score = (
