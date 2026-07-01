@@ -3,11 +3,6 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, message: 'Use POST' })
   }
 
-  const requiredKey = process.env.MANUAL_SCAN_KEY
-  if (requiredKey && req.headers['x-admin-key'] !== requiredKey) {
-    return res.status(401).json({ ok: false, message: 'Invalid scan key' })
-  }
-
   const token = process.env.GITHUB_DISPATCH_TOKEN
   if (!token) {
     return res.status(500).json({ ok: false, message: 'Missing GITHUB_DISPATCH_TOKEN' })
