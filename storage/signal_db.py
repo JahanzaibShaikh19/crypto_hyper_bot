@@ -1,5 +1,6 @@
 """
-storage/signal_db.py — SQLite database for signal history, dedup, and CME gap tracking.
+storage/signal_db.py — SQLite database for signal history, dedup, CME gap tracking,
+and lightweight performance feedback.
 
 Using SQLite because it's zero-infrastructure, runs on 1GB VPS,
 and persists perfectly across bot restarts.
@@ -35,6 +36,19 @@ def init_db():
             pipeline_scores TEXT,       -- JSON
             context     TEXT,           -- JSON
             fired_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Signal outcome tracking — checked later by storage/performance_tracker.py
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS signal_outcomes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            signal_id   INTEGER NOT NULL,
+            horizon     TEXT NOT NULL,  -- 1h, 4h, 24h
+            outcome_pct REAL,
+            is_win      INTEGER,
+            checked_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(signal_id, horizon)
         )
     """)
 
@@ -145,13 +159,73 @@ def get_recent_signals(hours: int = 24) -> list:
 
 
 # ═══════════════════════════════════════════
+# SIGNAL OUTCOME TRACKING
+# ═══════════════════════════════════════════
+
+def get_outcome_candidates(hours_after: int, horizon: str) -> list:
+    """Return fired signals old enough to check for a horizon and not already checked."""
+    conn = _get_conn()
+    c = conn.cursor()
+    cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=hours_after)
+
+    c.execute("""
+        SELECT s.*
+        FROM signals s
+        LEFT JOIN signal_outcomes o
+            ON o.signal_id = s.id AND o.horizon = ?
+        WHERE s.fired_at <= ?
+          AND o.id IS NULL
+        ORDER BY s.fired_at ASC
+    """, (horizon, cutoff))
+
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+
+def save_signal_outcome(signal_id: int, horizon: str, outcome_pct: float, is_win: bool):
+    conn = _get_conn()
+    c = conn.cursor()
+    c.execute("""
+        INSERT OR IGNORE INTO signal_outcomes (signal_id, horizon, outcome_pct, is_win)
+        VALUES (?, ?, ?, ?)
+    """, (signal_id, horizon, outcome_pct, 1 if is_win else 0))
+    conn.commit()
+    conn.close()
+
+
+def get_outcome_summary(days: int = 30) -> dict:
+    conn = _get_conn()
+    c = conn.cursor()
+    cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=days)
+    c.execute("""
+        SELECT o.*
+        FROM signal_outcomes o
+        WHERE o.checked_at >= ?
+    """, (cutoff,))
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+
+    if not rows:
+        return {"tracked": 0, "win_rate": 0.0, "avg_outcome_pct": 0.0}
+
+    wins = sum(1 for r in rows if r.get("is_win"))
+    avg = sum(float(r.get("outcome_pct") or 0) for r in rows) / len(rows)
+
+    return {
+        "tracked": len(rows),
+        "win_rate": round((wins / len(rows)) * 100, 1),
+        "avg_outcome_pct": round(avg, 3),
+    }
+
+
+# ═══════════════════════════════════════════
 # CME GAPS
 # ═══════════════════════════════════════════
 
 def save_cme_gap(gap_price: float, gap_type: str, gap_date: datetime.datetime):
     conn = _get_conn()
     c = conn.cursor()
-    # Don't duplicate gaps within $500 of existing unfilled gap
     c.execute("""
         SELECT id FROM cme_gaps
         WHERE ABS(gap_price - ?) < 500 AND filled = 0
