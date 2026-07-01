@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import {
   Activity,
   BarChart3,
@@ -5,7 +6,10 @@ import {
   CandlestickChart,
   Gauge,
   LineChart,
+  Loader2,
+  Play,
   RadioTower,
+  RefreshCw,
   ShieldCheck,
   Sparkles,
   TrendingDown,
@@ -13,60 +17,27 @@ import {
   Zap,
 } from 'lucide-react'
 
-const marketStats = [
-  { label: 'BTCUSDT', value: '$104,280', change: '+1.82%', tone: 'up' },
-  { label: 'ETHUSDT', value: '$5,840', change: '+0.74%', tone: 'up' },
-  { label: 'BTC.D', value: '54.2%', change: '-0.31%', tone: 'down' },
-  { label: 'Fear & Greed', value: '68', change: 'Greed', tone: 'warn' },
-]
+const fallback = {
+  generatedAt: 'Loading...',
+  status: { mode: 'loading', message: 'Loading dashboard data...' },
+  marketStats: [
+    { label: 'BTCUSDT', value: '—', change: '—', tone: 'flat' },
+    { label: 'ETHUSDT', value: '—', change: '—', tone: 'flat' },
+    { label: 'BTC.D', value: '—', change: '—', tone: 'flat' },
+    { label: 'Fear & Greed', value: '—', change: '—', tone: 'flat' },
+  ],
+  signals: [],
+  watchlist: [],
+  pipelines: [],
+  chart: { symbol: 'BTCUSDT', timeframe: '1H', points: [55, 60, 58, 66, 70, 64, 78, 82] },
+  riskPlan: { entryZone: '—', stopLoss: '—', targets: '—', rr: '—', note: 'Waiting for live data.' },
+  performance: { winRate: '—', tracked: '0', avgMove: '—', bestPair: '—' },
+  system: { dataFreshness: 'loading', nextUpdate: 'Hourly GitHub Actions' },
+}
 
-const signals = [
-  {
-    symbol: 'BTCUSDT',
-    direction: 'LONG',
-    score: '+7.8',
-    confidence: '78%',
-    price: '$104,280',
-    reason: '4H trend aligned, funding neutral, liquidity supportive',
-    tone: 'up',
-  },
-  {
-    symbol: 'SOLUSDT',
-    direction: 'WAIT',
-    score: '+3.1',
-    confidence: '42%',
-    price: '$183.40',
-    reason: 'Momentum improving but pipeline agreement is weak',
-    tone: 'flat',
-  },
-  {
-    symbol: 'AVAXUSDT',
-    direction: 'SHORT WATCH',
-    score: '-5.2',
-    confidence: '63%',
-    price: '$41.80',
-    reason: 'Structure weakening near resistance zone',
-    tone: 'down',
-  },
-]
-
-const pipelines = [
-  { name: 'Technical', score: 8.4, tone: 'up' },
-  { name: 'Correlation', score: 6.8, tone: 'up' },
-  { name: 'Fundamental', score: 4.5, tone: 'flat' },
-  { name: 'Sentiment', score: 7.2, tone: 'up' },
-  { name: 'Events', score: 5.7, tone: 'flat' },
-]
-
-const watchlist = [
-  ['BTC', '+7.8', 'LONG'],
-  ['ETH', '+5.9', 'WATCH'],
-  ['SOL', '+3.1', 'WAIT'],
-  ['BNB', '+2.4', 'WAIT'],
-  ['AVAX', '-5.2', 'SHORT'],
-]
-
-const candles = [62, 68, 65, 72, 78, 75, 81, 88, 84, 91, 96, 94, 101, 108, 105, 114, 121, 118]
+function StatCard({ stat }) {
+  return <div className="stat-card"><div className="stat-top"><span>{stat.label}</span><span className={`pill ${stat.tone || 'flat'}`}>{stat.change}</span></div><strong>{stat.value}</strong></div>
+}
 
 function ToneIcon({ tone }) {
   if (tone === 'up') return <TrendingUp size={16} />
@@ -74,205 +45,96 @@ function ToneIcon({ tone }) {
   return <Activity size={16} />
 }
 
-function StatCard({ stat }) {
-  return (
-    <div className="stat-card">
-      <div className="stat-top">
-        <span>{stat.label}</span>
-        <span className={`pill ${stat.tone}`}>{stat.change}</span>
-      </div>
-      <strong>{stat.value}</strong>
-    </div>
-  )
-}
-
 function SignalCard({ signal, active }) {
   return (
     <article className={`signal-card ${active ? 'active' : ''}`}>
-      <div className="signal-head">
-        <div>
-          <span className="muted small">Signal</span>
-          <h3>{signal.symbol}</h3>
-        </div>
-        <span className={`direction ${signal.tone}`}>{signal.direction}</span>
-      </div>
-      <div className="signal-grid">
-        <div>
-          <span>Score</span>
-          <strong>{signal.score}</strong>
-        </div>
-        <div>
-          <span>Confidence</span>
-          <strong>{signal.confidence}</strong>
-        </div>
-        <div>
-          <span>Price</span>
-          <strong>{signal.price}</strong>
-        </div>
-      </div>
+      <div className="signal-head"><div><span className="muted small">Signal</span><h3>{signal.symbol}</h3></div><span className={`direction ${signal.tone || 'flat'}`}><ToneIcon tone={signal.tone} /> {signal.direction}</span></div>
+      <div className="signal-grid"><div><span>Score</span><strong>{signal.score}</strong></div><div><span>Confidence</span><strong>{signal.confidence}</strong></div><div><span>Price</span><strong>{signal.price}</strong></div></div>
       <p>{signal.reason}</p>
     </article>
   )
 }
 
 function PipelineBar({ item }) {
-  return (
-    <div className="pipeline-row">
-      <div className="pipeline-label">
-        <span>{item.name}</span>
-        <strong>{item.score.toFixed(1)}</strong>
-      </div>
-      <div className="bar-track">
-        <div className={`bar-fill ${item.tone}`} style={{ width: `${item.score * 10}%` }} />
-      </div>
-    </div>
-  )
+  const width = Math.min(100, Math.max(0, Math.abs(Number(item.score || 0)) * 10))
+  return <div className="pipeline-row"><div className="pipeline-label"><span>{item.name}</span><strong>{Number(item.score || 0).toFixed(1)}</strong></div><div className="bar-track"><div className={`bar-fill ${item.tone || 'flat'}`} style={{ width: `${width}%` }} /></div></div>
 }
 
-function ChartPanel() {
+function ChartPanel({ chart }) {
+  const points = chart?.points?.length ? chart.points : fallback.chart.points
+  const max = Math.max(...points)
+  const min = Math.min(...points)
+  const span = max - min || 1
+  const path = points.map((point, index) => {
+    const x = (index / Math.max(points.length - 1, 1)) * 900
+    const y = 260 - ((point - min) / span) * 220
+    return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' ')
   return (
     <section className="panel chart-panel">
-      <div className="panel-head">
-        <div>
-          <span className="eyebrow">Live market context</span>
-          <h2>BTCUSDT Research View</h2>
-        </div>
-        <div className="chart-actions">
-          <span>15m</span>
-          <span>1H</span>
-          <strong>4H</strong>
-          <span>1D</span>
-        </div>
-      </div>
-
-      <div className="chart-shell">
-        <div className="chart-grid" />
-        <svg viewBox="0 0 900 280" className="line-svg" preserveAspectRatio="none">
-          <defs>
-            <linearGradient id="area" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="rgba(0,192,118,.35)" />
-              <stop offset="100%" stopColor="rgba(0,192,118,0)" />
-            </linearGradient>
-          </defs>
-          <path d="M0,210 C80,180 120,205 185,166 C245,130 310,165 360,112 C430,50 500,100 560,78 C640,48 705,84 760,42 C825,12 860,46 900,20" fill="none" stroke="var(--green)" strokeWidth="3" />
-          <path d="M0,210 C80,180 120,205 185,166 C245,130 310,165 360,112 C430,50 500,100 560,78 C640,48 705,84 760,42 C825,12 860,46 900,20 L900,280 L0,280 Z" fill="url(#area)" />
-        </svg>
-        <div className="candles">
-          {candles.map((height, index) => (
-            <span key={index} className={index % 3 === 0 ? 'red' : 'green'} style={{ height: `${height}px` }} />
-          ))}
-        </div>
-      </div>
+      <div className="panel-head"><div><span className="eyebrow">Live market context</span><h2>{chart?.symbol || 'BTCUSDT'} Research View</h2></div><div className="chart-actions"><span>15m</span><strong>{chart?.timeframe || '1H'}</strong><span>4H</span><span>1D</span></div></div>
+      <div className="chart-shell"><div className="chart-grid" /><svg viewBox="0 0 900 280" className="line-svg" preserveAspectRatio="none"><defs><linearGradient id="area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="rgba(0,192,118,.35)" /><stop offset="100%" stopColor="rgba(0,192,118,0)" /></linearGradient></defs><path d={path} fill="none" stroke="var(--green)" strokeWidth="3" /><path d={`${path} L900,280 L0,280 Z`} fill="url(#area)" /></svg><div className="candles">{points.slice(-22).map((value, index) => <span key={`${value}-${index}`} className={index % 4 === 0 ? 'red' : 'green'} style={{ height: `${Math.max(30, value)}px` }} />)}</div></div>
     </section>
   )
 }
 
-function RiskPanel() {
-  return (
-    <section className="panel risk-panel">
-      <div className="panel-head compact">
-        <div>
-          <span className="eyebrow">Execution discipline</span>
-          <h2>Risk Plan</h2>
-        </div>
-        <ShieldCheck className="accent" />
-      </div>
-      <div className="risk-box">
-        <div><span>Entry Zone</span><strong>$103,900 — $104,650</strong></div>
-        <div><span>Stop Loss</span><strong>$102,450</strong></div>
-        <div><span>TP1 / TP2</span><strong>$106,850 / $109,200</strong></div>
-        <div><span>R:R</span><strong>1:2.42</strong></div>
-      </div>
-      <p className="panel-note">Educational research view only. Risk is capped before conviction is considered.</p>
-    </section>
-  )
+function RiskPanel({ riskPlan }) {
+  return <section className="panel risk-panel"><div className="panel-head compact"><div><span className="eyebrow">Execution discipline</span><h2>Risk Plan</h2></div><ShieldCheck className="accent" /></div><div className="risk-box"><div><span>Entry Zone</span><strong>{riskPlan.entryZone}</strong></div><div><span>Stop Loss</span><strong>{riskPlan.stopLoss}</strong></div><div><span>TP1 / TP2</span><strong>{riskPlan.targets}</strong></div><div><span>R:R</span><strong>{riskPlan.rr}</strong></div></div><p className="panel-note">{riskPlan.note}</p></section>
 }
 
 function App() {
+  const [dashboard, setDashboard] = useState(fallback)
+  const [loading, setLoading] = useState(true)
+  const [message, setMessage] = useState('')
+
+  async function loadDashboard() {
+    setLoading(true)
+    try {
+      const response = await fetch(`/data/dashboard.json?t=${Date.now()}`, { cache: 'no-store' })
+      const data = await response.json()
+      setDashboard({ ...fallback, ...data })
+      setMessage(data.status?.message || 'Dashboard updated')
+    } catch {
+      setMessage('Dashboard data not available yet')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function runScan() {
+    setMessage('Starting signal scan workflow...')
+    try {
+      const response = await fetch('/api/run-scan', { method: 'POST' })
+      const data = await response.json()
+      setMessage(data.message || (response.ok ? 'Scan started' : 'Scan failed'))
+    } catch {
+      setMessage('Unable to trigger scan')
+    }
+  }
+
+  useEffect(() => {
+    loadDashboard()
+    const timer = setInterval(loadDashboard, 300000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const signals = dashboard.signals || []
+  const watchlist = dashboard.watchlist || []
+  const pipelines = dashboard.pipelines?.length ? dashboard.pipelines : fallback.pipelines
+  const generatedAt = dashboard.generatedAt ? new Date(dashboard.generatedAt).toLocaleString() : '—'
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
-        <div className="brand">
-          <div className="logo"><CandlestickChart size={22} /></div>
-          <div>
-            <strong>Hyper Bot</strong>
-            <span>Trading intelligence</span>
-          </div>
-        </div>
-
-        <nav>
-          <a className="active"><Gauge size={18} /> Dashboard</a>
-          <a><LineChart size={18} /> Signals</a>
-          <a><BarChart3 size={18} /> Performance</a>
-          <a><RadioTower size={18} /> Pipelines</a>
-        </nav>
-
-        <div className="watchlist">
-          <span className="eyebrow">Watchlist</span>
-          {watchlist.map(([coin, score, mode]) => (
-            <div className="watch-row" key={coin}>
-              <strong>{coin}</strong>
-              <span>{score}</span>
-              <small>{mode}</small>
-            </div>
-          ))}
-        </div>
+        <div className="brand"><div className="logo"><CandlestickChart size={22} /></div><div><strong>Hyper Bot</strong><span>Trading intelligence</span></div></div>
+        <nav><a className="active"><Gauge size={18} /> Dashboard</a><a><LineChart size={18} /> Signals</a><a><BarChart3 size={18} /> Performance</a><a><RadioTower size={18} /> Pipelines</a></nav>
+        <div className="watchlist"><span className="eyebrow">Watchlist</span>{watchlist.map(([coin, score, mode]) => <div className="watch-row" key={coin}><strong>{coin}</strong><span>{score}</span><small>{mode}</small></div>)}</div>
       </aside>
 
       <section className="content">
-        <header className="topbar">
-          <div>
-            <span className="eyebrow">Research dashboard</span>
-            <h1>Market Intelligence</h1>
-          </div>
-          <button className="notify"><Bell size={18} /> Live Signals</button>
-        </header>
-
-        <section className="stats-grid">
-          {marketStats.map((stat) => <StatCard stat={stat} key={stat.label} />)}
-        </section>
-
-        <section className="main-grid">
-          <div className="left-stack">
-            <ChartPanel />
-            <section className="signals-grid">
-              {signals.map((signal, index) => <SignalCard key={signal.symbol} signal={signal} active={index === 0} />)}
-            </section>
-          </div>
-
-          <div className="right-stack">
-            <RiskPanel />
-
-            <section className="panel">
-              <div className="panel-head compact">
-                <div>
-                  <span className="eyebrow">5-pipeline score</span>
-                  <h2>Confluence</h2>
-                </div>
-                <Zap className="accent" />
-              </div>
-              <div className="pipeline-list">
-                {pipelines.map((item) => <PipelineBar item={item} key={item.name} />)}
-              </div>
-            </section>
-
-            <section className="panel performance-panel">
-              <div className="panel-head compact">
-                <div>
-                  <span className="eyebrow">Outcome tracking</span>
-                  <h2>Performance</h2>
-                </div>
-                <Sparkles className="accent" />
-              </div>
-              <div className="performance-grid">
-                <div><span>Win Rate</span><strong>64.8%</strong></div>
-                <div><span>Tracked</span><strong>142</strong></div>
-                <div><span>Avg Move</span><strong className="green-text">+1.38%</strong></div>
-                <div><span>Best Pair</span><strong>BTC</strong></div>
-              </div>
-            </section>
-          </div>
-        </section>
+        <header className="topbar"><div><span className="eyebrow">Research dashboard</span><h1>Market Intelligence</h1><p className="topbar-subtitle">{message || dashboard.status?.message}</p></div><div className="topbar-actions"><button className="secondary-btn" onClick={loadDashboard}>{loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />} Refresh</button><button className="run-btn" onClick={runScan}><Play size={16} /> Run Scan</button><button className="notify"><Bell size={18} /> {dashboard.system?.dataFreshness || 'Live'}</button></div></header>
+        <section className="stats-grid">{dashboard.marketStats.map((stat) => <StatCard stat={stat} key={stat.label} />)}</section>
+        <section className="main-grid"><div className="left-stack"><ChartPanel chart={dashboard.chart} />{signals.length ? <section className="signals-grid">{signals.map((signal, index) => <SignalCard key={signal.symbol} signal={signal} active={index === 0} />)}</section> : <section className="panel empty-panel"><Sparkles className="accent" /><h2>No signals yet</h2><p>Run scan manually or wait for hourly GitHub Actions.</p></section>}</div><div className="right-stack"><section className="panel system-panel"><div className="panel-head compact"><div><span className="eyebrow">Automation</span><h2>System Status</h2></div><RadioTower className="accent" /></div><div className="system-list"><div><span>Mode</span><strong>{dashboard.status?.mode}</strong></div><div><span>Last refresh</span><strong>{generatedAt}</strong></div><div><span>Next update</span><strong>{dashboard.system?.nextUpdate}</strong></div></div></section><RiskPanel riskPlan={dashboard.riskPlan || fallback.riskPlan} /><section className="panel"><div className="panel-head compact"><div><span className="eyebrow">5-pipeline score</span><h2>Confluence</h2></div><Zap className="accent" /></div><div className="pipeline-list">{pipelines.map((item) => <PipelineBar item={item} key={item.name} />)}</div></section><section className="panel performance-panel"><div className="panel-head compact"><div><span className="eyebrow">Outcome tracking</span><h2>Performance</h2></div><Sparkles className="accent" /></div><div className="performance-grid"><div><span>Win Rate</span><strong>{dashboard.performance?.winRate}</strong></div><div><span>Tracked</span><strong>{dashboard.performance?.tracked}</strong></div><div><span>Avg Move</span><strong className="green-text">{dashboard.performance?.avgMove}</strong></div><div><span>Best Pair</span><strong>{dashboard.performance?.bestPair}</strong></div></div></section></div></section>
       </section>
     </main>
   )
