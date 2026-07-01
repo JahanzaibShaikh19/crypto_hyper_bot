@@ -1,0 +1,30 @@
+name: Signal Snapshot
+
+on:
+  schedule:
+    - cron: "11 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate-dashboard-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Generate dashboard signal snapshot
+        env:
+          WATCHLIST: BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,AVAXUSDT
+        run: python scripts/generate_dashboard_data.py
+
+      - name: Commit updated dashboard data
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(data): refresh dashboard signal snapshot"
+          file_pattern: frontend/public/data/dashboard.json
