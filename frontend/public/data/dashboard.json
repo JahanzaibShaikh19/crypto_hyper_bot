@@ -1,62 +1,63 @@
 {
-  "generatedAt": "2026-07-01T00:00:00Z",
-  "source": "initial-static-snapshot",
+  "generatedAt": "2026-07-01T15:48:17Z",
+  "source": "github-actions-hourly-snapshot",
   "status": {
-    "mode": "initial",
-    "message": "Waiting for the first GitHub Actions signal scan."
+    "mode": "live",
+    "message": "Latest public market snapshot generated successfully."
   },
   "marketStats": [
-    { "label": "BTCUSDT", "value": "$104,280.00", "change": "+1.82%", "tone": "up" },
-    { "label": "ETHUSDT", "value": "$5,840.00", "change": "+0.74%", "tone": "up" },
-    { "label": "BTC.D", "value": "54.2%", "change": "Live soon", "tone": "flat" },
-    { "label": "Fear & Greed", "value": "68", "change": "Greed", "tone": "warn" }
-  ],
-  "signals": [
     {
-      "symbol": "BTCUSDT",
-      "direction": "WAIT",
-      "score": "+0.0",
-      "confidence": "0%",
-      "price": "$104,280.00",
-      "reason": "Initial placeholder until the hourly signal workflow runs.",
+      "label": "BTCUSDT",
+      "value": "$0.000000",
+      "change": "+0.00%",
       "tone": "flat"
+    },
+    {
+      "label": "ETHUSDT",
+      "value": "$0.000000",
+      "change": "+0.00%",
+      "tone": "flat"
+    },
+    {
+      "label": "BTC.D",
+      "value": "Proxy",
+      "change": "live soon",
+      "tone": "flat"
+    },
+    {
+      "label": "Fear & Greed",
+      "value": "11",
+      "change": "Extreme Fear",
+      "tone": "warn"
     }
   ],
-  "watchlist": [
-    ["BTC", "+0.0", "WAIT"],
-    ["ETH", "+0.0", "WAIT"],
-    ["SOL", "+0.0", "WAIT"],
-    ["BNB", "+0.0", "WAIT"],
-    ["AVAX", "+0.0", "WAIT"]
-  ],
-  "pipelines": [
-    { "name": "Technical", "score": 0.0, "tone": "flat" },
-    { "name": "Correlation", "score": 0.0, "tone": "flat" },
-    { "name": "Fundamental", "score": 0.0, "tone": "flat" },
-    { "name": "Sentiment", "score": 0.0, "tone": "flat" },
-    { "name": "Events", "score": 0.0, "tone": "flat" }
-  ],
+  "signals": [],
+  "watchlist": [],
+  "pipelines": [],
   "chart": {
     "symbol": "BTCUSDT",
     "timeframe": "1H",
-    "points": [62, 68, 65, 72, 78, 75, 81, 88, 84, 91, 96, 94, 101, 108, 105, 114, 121, 118]
+    "points": [
+      70
+    ]
   },
   "riskPlan": {
-    "entryZone": "Waiting for signal",
-    "stopLoss": "—",
-    "targets": "—",
-    "rr": "—",
-    "note": "Risk plan appears after a LONG/SHORT/WATCH signal is generated."
+    "entryZone": "No trade zone",
+    "stopLoss": "Wait for confluence",
+    "targets": "\u2014",
+    "rr": "\u2014",
+    "note": "Market does not meet signal threshold."
   },
   "performance": {
-    "winRate": "—",
+    "winRate": "Live soon",
     "tracked": "0",
-    "avgMove": "—",
-    "bestPair": "—"
+    "avgMove": "Live soon",
+    "bestPair": "BTC"
   },
   "system": {
-    "lastWorkflow": "not-run-yet",
-    "nextUpdate": "Hourly via GitHub Actions",
-    "dataFreshness": "initial"
+    "lastWorkflow": "2026-07-01T15:48:17Z",
+    "nextUpdate": "Hourly GitHub Actions",
+    "dataFreshness": "fresh",
+    "symbolsScanned": 0
   }
 }
