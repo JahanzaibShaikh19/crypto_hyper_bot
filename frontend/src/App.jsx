@@ -88,8 +88,8 @@ function App() {
   const [message, setMessage] = useState('')
 
   async function fetchLiveDashboard() {
-    const response = await fetch(`/api/dashboard?t=${Date.now()}`, { cache: 'no-store' })
-    if (!response.ok) throw new Error('Live API failed')
+    const response = await fetch(`/api/market?t=${Date.now()}`, { cache: 'no-store' })
+    if (!response.ok) throw new Error('Live market API failed')
     return response.json()
   }
 
@@ -109,7 +109,7 @@ function App() {
       try {
         const data = await fetchSnapshotDashboard()
         setDashboard({ ...fallback, ...data })
-        setMessage('Live API unavailable, showing last saved snapshot')
+        setMessage('Live market API unavailable, showing last saved snapshot')
       } catch {
         setMessage('Dashboard data not available yet')
       }
@@ -119,7 +119,7 @@ function App() {
   }
 
   async function runScan() {
-    setMessage('Running live scan...')
+    setMessage('Running live market scan...')
     try {
       const data = await fetchLiveDashboard()
       setDashboard({ ...fallback, ...data })
