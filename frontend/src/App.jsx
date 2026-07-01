@@ -32,7 +32,7 @@ const fallback = {
   chart: { symbol: 'BTCUSDT', timeframe: '1H', points: [55, 60, 58, 66, 70, 64, 78, 82] },
   riskPlan: { entryZone: '—', stopLoss: '—', targets: '—', rr: '—', note: 'Waiting for live data.' },
   performance: { winRate: '—', tracked: '0', avgMove: '—', bestPair: '—' },
-  system: { dataFreshness: 'loading', nextUpdate: 'Hourly GitHub Actions' },
+  system: { dataFreshness: 'loading', nextUpdate: 'Live API on refresh' },
 }
 
 function StatCard({ stat }) {
@@ -87,34 +87,51 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
 
+  async function fetchLiveDashboard() {
+    const response = await fetch(`/api/dashboard?t=${Date.now()}`, { cache: 'no-store' })
+    if (!response.ok) throw new Error('Live API failed')
+    return response.json()
+  }
+
+  async function fetchSnapshotDashboard() {
+    const response = await fetch(`/data/dashboard.json?t=${Date.now()}`, { cache: 'no-store' })
+    if (!response.ok) throw new Error('Snapshot unavailable')
+    return response.json()
+  }
+
   async function loadDashboard() {
     setLoading(true)
     try {
-      const response = await fetch(`/data/dashboard.json?t=${Date.now()}`, { cache: 'no-store' })
-      const data = await response.json()
+      const data = await fetchLiveDashboard()
       setDashboard({ ...fallback, ...data })
-      setMessage(data.status?.message || 'Dashboard updated')
+      setMessage(data.status?.message || 'Live dashboard updated')
     } catch {
-      setMessage('Dashboard data not available yet')
+      try {
+        const data = await fetchSnapshotDashboard()
+        setDashboard({ ...fallback, ...data })
+        setMessage('Live API unavailable, showing last saved snapshot')
+      } catch {
+        setMessage('Dashboard data not available yet')
+      }
     } finally {
       setLoading(false)
     }
   }
 
   async function runScan() {
-    setMessage('Starting signal scan workflow...')
+    setMessage('Running live scan...')
     try {
-      const response = await fetch('/api/run-scan', { method: 'POST' })
-      const data = await response.json()
-      setMessage(data.message || (response.ok ? 'Scan started' : 'Scan failed'))
+      const data = await fetchLiveDashboard()
+      setDashboard({ ...fallback, ...data })
+      setMessage('Live scan complete. Prices and signals refreshed.')
     } catch {
-      setMessage('Unable to trigger scan')
+      setMessage('Live scan failed. Check Vercel function logs.')
     }
   }
 
   useEffect(() => {
     loadDashboard()
-    const timer = setInterval(loadDashboard, 300000)
+    const timer = setInterval(loadDashboard, 60000)
     return () => clearInterval(timer)
   }, [])
 
@@ -132,9 +149,9 @@ function App() {
       </aside>
 
       <section className="content">
-        <header className="topbar"><div><span className="eyebrow">Research dashboard</span><h1>Market Intelligence</h1><p className="topbar-subtitle">{message || dashboard.status?.message}</p></div><div className="topbar-actions"><button className="secondary-btn" onClick={loadDashboard}>{loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />} Refresh</button><button className="run-btn" onClick={runScan}><Play size={16} /> Run Scan</button><button className="notify"><Bell size={18} /> {dashboard.system?.dataFreshness || 'Live'}</button></div></header>
+        <header className="topbar"><div><span className="eyebrow">Research dashboard</span><h1>Market Intelligence</h1><p className="topbar-subtitle">{message || dashboard.status?.message}</p></div><div className="topbar-actions"><button className="secondary-btn" onClick={loadDashboard}>{loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />} Refresh</button><button className="run-btn" onClick={runScan}><Play size={16} /> Run Live Scan</button><button className="notify"><Bell size={18} /> {dashboard.system?.dataFreshness || 'Live'}</button></div></header>
         <section className="stats-grid">{dashboard.marketStats.map((stat) => <StatCard stat={stat} key={stat.label} />)}</section>
-        <section className="main-grid"><div className="left-stack"><ChartPanel chart={dashboard.chart} />{signals.length ? <section className="signals-grid">{signals.map((signal, index) => <SignalCard key={signal.symbol} signal={signal} active={index === 0} />)}</section> : <section className="panel empty-panel"><Sparkles className="accent" /><h2>No signals yet</h2><p>Run scan manually or wait for hourly GitHub Actions.</p></section>}</div><div className="right-stack"><section className="panel system-panel"><div className="panel-head compact"><div><span className="eyebrow">Automation</span><h2>System Status</h2></div><RadioTower className="accent" /></div><div className="system-list"><div><span>Mode</span><strong>{dashboard.status?.mode}</strong></div><div><span>Last refresh</span><strong>{generatedAt}</strong></div><div><span>Next update</span><strong>{dashboard.system?.nextUpdate}</strong></div></div></section><RiskPanel riskPlan={dashboard.riskPlan || fallback.riskPlan} /><section className="panel"><div className="panel-head compact"><div><span className="eyebrow">5-pipeline score</span><h2>Confluence</h2></div><Zap className="accent" /></div><div className="pipeline-list">{pipelines.map((item) => <PipelineBar item={item} key={item.name} />)}</div></section><section className="panel performance-panel"><div className="panel-head compact"><div><span className="eyebrow">Outcome tracking</span><h2>Performance</h2></div><Sparkles className="accent" /></div><div className="performance-grid"><div><span>Win Rate</span><strong>{dashboard.performance?.winRate}</strong></div><div><span>Tracked</span><strong>{dashboard.performance?.tracked}</strong></div><div><span>Avg Move</span><strong className="green-text">{dashboard.performance?.avgMove}</strong></div><div><span>Best Pair</span><strong>{dashboard.performance?.bestPair}</strong></div></div></section></div></section>
+        <section className="main-grid"><div className="left-stack"><ChartPanel chart={dashboard.chart} />{signals.length ? <section className="signals-grid">{signals.map((signal, index) => <SignalCard key={signal.symbol} signal={signal} active={index === 0} />)}</section> : <section className="panel empty-panel"><Sparkles className="accent" /><h2>No signals yet</h2><p>Run scan manually or wait for live API.</p></section>}</div><div className="right-stack"><section className="panel system-panel"><div className="panel-head compact"><div><span className="eyebrow">Automation</span><h2>System Status</h2></div><RadioTower className="accent" /></div><div className="system-list"><div><span>Mode</span><strong>{dashboard.status?.mode}</strong></div><div><span>Last refresh</span><strong>{generatedAt}</strong></div><div><span>Next update</span><strong>{dashboard.system?.nextUpdate}</strong></div></div></section><RiskPanel riskPlan={dashboard.riskPlan || fallback.riskPlan} /><section className="panel"><div className="panel-head compact"><div><span className="eyebrow">5-pipeline score</span><h2>Confluence</h2></div><Zap className="accent" /></div><div className="pipeline-list">{pipelines.map((item) => <PipelineBar item={item} key={item.name} />)}</div></section><section className="panel performance-panel"><div className="panel-head compact"><div><span className="eyebrow">Outcome tracking</span><h2>Performance</h2></div><Sparkles className="accent" /></div><div className="performance-grid"><div><span>Win Rate</span><strong>{dashboard.performance?.winRate}</strong></div><div><span>Tracked</span><strong>{dashboard.performance?.tracked}</strong></div><div><span>Avg Move</span><strong className="green-text">{dashboard.performance?.avgMove}</strong></div><div><span>Best Pair</span><strong>{dashboard.performance?.bestPair}</strong></div></div></section></div></section>
       </section>
     </main>
   )
