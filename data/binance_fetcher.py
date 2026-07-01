@@ -22,6 +22,11 @@ from config import BINANCE_BASE_URL, CACHE_OHLCV, CANDLES_LIMIT
 from utils.cache import cache_get, cache_set
 from utils.rate_limiter import BINANCE_LIMITER
 
+# Binance spot and USD-M futures use different public base URLs.
+# This keeps old config compatibility while making funding / OI /
+# liquidation endpoints resolve against the correct futures host.
+BINANCE_FUTURES_BASE_URL = "https://fapi.binance.com"
+
 
 async def _get(url: str, params: dict = None, timeout: int = 15) -> Optional[dict | list]:
     """Low-level async GET with rate limiting and error handling."""
@@ -95,11 +100,9 @@ async def fetch_funding_rate(symbol: str) -> Optional[dict]:
     if cached is not None:
         return cached
 
-    url = f"{BINANCE_BASE_URL}/fapi/v1/premiumIndex"
-    # Convert spot symbol to perp format if needed
-    perp_symbol = symbol.replace("USDT", "USDT") if "USDT" in symbol else symbol
+    url = f"{BINANCE_FUTURES_BASE_URL}/fapi/v1/premiumIndex"
 
-    data = await _get(url, {"symbol": perp_symbol})
+    data = await _get(url, {"symbol": symbol})
     if not data:
         return {"funding_rate": 0.0, "mark_price": 0.0, "index_price": 0.0}
 
@@ -129,7 +132,7 @@ async def fetch_open_interest(symbol: str) -> Optional[dict]:
         return cached
 
     # Current OI
-    url = f"{BINANCE_BASE_URL}/fapi/v1/openInterest"
+    url = f"{BINANCE_FUTURES_BASE_URL}/fapi/v1/openInterest"
     data = await _get(url, {"symbol": symbol})
 
     if not data:
@@ -138,7 +141,7 @@ async def fetch_open_interest(symbol: str) -> Optional[dict]:
     current_oi = float(data.get("openInterest", 0))
 
     # Historical OI for change calculation
-    hist_url = f"{BINANCE_BASE_URL}/futures/data/openInterestHist"
+    hist_url = f"{BINANCE_FUTURES_BASE_URL}/futures/data/openInterestHist"
     hist_data = await _get(hist_url, {
         "symbol": symbol,
         "period": "1h",
@@ -167,15 +170,15 @@ async def fetch_liquidations(symbol: str) -> Optional[dict]:
     Fetch recent liquidation data.
 
     Large liquidation cascades = reversal signal.
-    After mass short liquidations = short squeeze potential
-    After mass long liquidations = bounce potential
+    After mass short liquidations = short squeeze potential.
+    After mass long liquidations = bounce potential.
     """
     cache_key = f"liq:{symbol}"
     cached = cache_get(cache_key)
     if cached is not None:
         return cached
 
-    url = f"{BINANCE_BASE_URL}/fapi/v1/allForceOrders"
+    url = f"{BINANCE_FUTURES_BASE_URL}/fapi/v1/allForceOrders"
     data = await _get(url, {"symbol": symbol, "limit": 100})
 
     if not data:
@@ -239,6 +242,7 @@ async def fetch_all_for_symbol(symbol: str) -> dict:
         fetch_ohlcv(symbol, "1d"),
         fetch_funding_rate(symbol),
         fetch_open_interest(symbol),
+        fetch_liquidations(symbol),
         fetch_ticker_24h(symbol),
         return_exceptions=True,
     )
@@ -254,5 +258,6 @@ async def fetch_all_for_symbol(symbol: str) -> dict:
         "ohlcv_1d":  safe(results[3]),
         "funding":   safe(results[4]) or {},
         "oi":        safe(results[5]) or {},
-        "ticker":    safe(results[6]) or {},
+        "liquidations": safe(results[6]) or {},
+        "ticker":    safe(results[7]) or {},
     }
