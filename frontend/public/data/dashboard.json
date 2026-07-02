@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-02T11:41:24Z",
+  "generatedAt": "2026-07-02T14:25:22Z",
   "source": "github-actions-hourly-snapshot",
   "status": {
     "mode": "live",
@@ -55,7 +55,7 @@
     "bestPair": "BTC"
   },
   "system": {
-    "lastWorkflow": "2026-07-02T11:41:24Z",
+    "lastWorkflow": "2026-07-02T14:25:22Z",
     "nextUpdate": "Hourly GitHub Actions",
     "dataFreshness": "fresh",
     "symbolsScanned": 0
