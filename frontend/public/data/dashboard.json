@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-07T23:10:56Z",
+  "generatedAt": "2026-07-08T00:10:07Z",
   "source": "github-actions-hourly-snapshot",
   "status": {
     "mode": "live",
@@ -26,8 +26,8 @@
     },
     {
       "label": "Fear & Greed",
-      "value": "27",
-      "change": "Fear",
+      "value": "20",
+      "change": "Extreme Fear",
       "tone": "warn"
     }
   ],
@@ -55,7 +55,7 @@
     "bestPair": "BTC"
   },
   "system": {
-    "lastWorkflow": "2026-07-07T23:10:56Z",
+    "lastWorkflow": "2026-07-08T00:10:07Z",
     "nextUpdate": "Hourly GitHub Actions",
     "dataFreshness": "fresh",
     "symbolsScanned": 0
