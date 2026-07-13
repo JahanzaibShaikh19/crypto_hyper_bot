@@ -11,7 +11,8 @@ export default async function handler(req, res) {
   const owner = process.env.GITHUB_OWNER || 'JahanzaibShaikh19'
   const repo = process.env.GITHUB_REPO || 'crypto_hyper_bot'
   const workflow = process.env.ORIGINAL_BOT_WORKFLOW_FILE || 'original-bot-scan.yml'
-  const url = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflow}/runs?per_page=1&branch=main`
+  const after = req.query?.after ? Date.parse(String(req.query.after)) : 0
+  const url = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflow}/runs?per_page=5&branch=main`
 
   const githubRes = await fetch(url, {
     headers: {
@@ -26,9 +27,10 @@ export default async function handler(req, res) {
   }
 
   const payload = await githubRes.json()
-  const run = payload.workflow_runs?.[0]
+  const runs = payload.workflow_runs || []
+  const run = after ? runs.find((item) => Date.parse(item.created_at) >= after - 3000) : runs[0]
   if (!run) {
-    return res.status(200).json({ ok: true, status: 'not_started', message: 'No original bot scan runs yet' })
+    return res.status(200).json({ ok: true, status: 'queued', message: 'Waiting for new original bot scan run to appear' })
   }
 
   return res.status(200).json({
