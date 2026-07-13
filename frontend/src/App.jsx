@@ -18,6 +18,7 @@ import {
   TrendingUp,
   Zap,
 } from 'lucide-react'
+import OriginalScanner from './OriginalScanner.jsx'
 
 const fallback = {
   generatedAt: 'Loading...',
@@ -40,6 +41,7 @@ const fallback = {
 const pages = [
   { key: 'dashboard', label: 'Dashboard', icon: Gauge },
   { key: 'signals', label: 'Signals', icon: LineChart },
+  { key: 'original-scan', label: 'Original Scan', icon: Bot },
   { key: 'pipelines', label: 'Pipelines', icon: RadioTower },
   { key: 'performance', label: 'Performance', icon: BarChart3 },
 ]
@@ -125,9 +127,13 @@ function DashboardPage({ dashboard, signals, pipelines, botSignal }) {
   )
 }
 
-function SignalsPage({ dashboard, signals, botSignal }) {
+function SignalsPage({ dashboard, signals, botSignal, openOriginalScan }) {
   return (
-    <section className="page-stack"><BotSignalPanel signal={botSignal} generatedAt={dashboard.generatedAt} />{signals.length ? <div className="signal-table panel"><div className="table-head"><span>Pair</span><span>Signal</span><span>Score</span><span>Confidence</span><span>Price</span><span>Reason</span></div>{signals.map((signal) => <div className="table-row" key={signal.symbol}><strong>{signal.symbol}</strong><DirectionPill signal={signal} /><span>{signal.score}</span><span>{signal.confidence}</span><span>{signal.price}</span><p>{signal.reason}</p></div>)}</div> : <EmptyPanel title="Signals unavailable" copy="Live API did not return signal data yet." />}</section>
+    <section className="page-stack">
+      <section className="panel signal-runner-cta"><div><span className="eyebrow">Original signal runner</span><h2>Need the real Python bot signal?</h2><p>Use the Original Scan page to trigger the actual backend master engine with 5 pipelines, GitHub Actions execution, animated scanning, and exported latest bot signal.</p></div><button className="run-btn" onClick={openOriginalScan}><Bot size={16} /> Open Original Scan</button></section>
+      <BotSignalPanel signal={botSignal} generatedAt={dashboard.generatedAt} />
+      {signals.length ? <div className="signal-table panel"><div className="table-head"><span>Pair</span><span>Signal</span><span>Score</span><span>Confidence</span><span>Price</span><span>Reason</span></div>{signals.map((signal) => <div className="table-row" key={signal.symbol}><strong>{signal.symbol}</strong><DirectionPill signal={signal} /><span>{signal.score}</span><span>{signal.confidence}</span><span>{signal.price}</span><p>{signal.reason}</p></div>)}</div> : <EmptyPanel title="Signals unavailable" copy="Live API did not return signal data yet." />}
+    </section>
   )
 }
 
@@ -224,7 +230,8 @@ function App() {
   const pageTitle = pages.find((page) => page.key === activePage)?.label || 'Dashboard'
 
   const page = useMemo(() => {
-    if (activePage === 'signals') return <SignalsPage dashboard={dashboard} signals={signals} botSignal={botSignal} />
+    if (activePage === 'signals') return <SignalsPage dashboard={dashboard} signals={signals} botSignal={botSignal} openOriginalScan={() => setActivePage('original-scan')} />
+    if (activePage === 'original-scan') return <OriginalScanner onRefreshMarket={loadDashboard} />
     if (activePage === 'pipelines') return <PipelinesPage dashboard={dashboard} pipelines={pipelines} botSignal={botSignal} />
     if (activePage === 'performance') return <PerformancePage dashboard={dashboard} signals={signals} botSignal={botSignal} />
     return <DashboardPage dashboard={dashboard} signals={signals} pipelines={pipelines} botSignal={botSignal} />
