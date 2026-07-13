@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from loguru import logger
 
@@ -15,7 +20,7 @@ from data.coingecko_fetcher import fetch_global_market
 from main import scan_symbol, setup_logging
 from storage.signal_db import init_db
 
-OUT = Path("frontend/public/data/original-bot-scan.json")
+OUT = ROOT / "frontend/public/data/original-bot-scan.json"
 
 
 def now_iso() -> str:
@@ -56,7 +61,7 @@ def compact_signal(result: dict[str, Any]) -> dict[str, Any]:
     price = result.get("price") or context.get("price") or 0
     warnings = context.get("all_warnings") or []
     reason_bits = [
-        f"Original master engine output",
+        "Original master engine output",
         f"{result.get('pipelines_agreeing', 0)}/5 pipelines aligned",
         f"BTC scenario: {context.get('btc_scenario', 'Unknown')}",
     ]
@@ -103,6 +108,19 @@ def write_payload(payload: dict[str, Any]) -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     logger.info(f"Original bot scan JSON written: {OUT}")
+
+
+def failure_payload(message: str) -> dict[str, Any]:
+    return {
+        "generatedAt": now_iso(),
+        "source": "original-python-master-engine",
+        "status": {"mode": "failed", "message": f"Original bot scan failed: {message}"},
+        "summary": {"watchlist": WATCHLIST, "symbolsScanned": 0, "signalsFired": 0, "bestSymbol": "—", "bestDirection": "NO_TRADE", "bestScore": "+0.0", "errors": [{"error": message}]},
+        "latestSignal": None,
+        "signals": [],
+        "pipelines": pipeline_rows(None),
+        "system": {"runner": "github-actions-one-shot", "nextStep": "Check workflow logs."},
+    }
 
 
 async def run_once() -> dict[str, Any]:
@@ -173,16 +191,8 @@ async def main() -> None:
         await run_once()
     except Exception as exc:
         traceback.print_exc()
-        write_payload({
-            "generatedAt": now_iso(),
-            "source": "original-python-master-engine",
-            "status": {"mode": "failed", "message": f"Original bot scan failed: {exc}"},
-            "summary": {"watchlist": WATCHLIST, "symbolsScanned": 0, "signalsFired": 0, "errors": [{"error": str(exc)}]},
-            "latestSignal": None,
-            "signals": [],
-            "pipelines": pipeline_rows(None),
-            "system": {"runner": "github-actions-one-shot", "nextStep": "Check workflow logs."},
-        })
+        write_payload(failure_payload(str(exc)))
+        raise
 
 
 if __name__ == "__main__":
