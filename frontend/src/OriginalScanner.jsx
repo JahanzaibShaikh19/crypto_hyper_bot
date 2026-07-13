@@ -76,6 +76,7 @@ export default function OriginalScanner({ onRefreshMarket }) {
   const [scanning, setScanning] = useState(false)
   const [phaseIndex, setPhaseIndex] = useState(0)
   const [message, setMessage] = useState('Ready to run original bot scan.')
+  const [scanStartedAt, setScanStartedAt] = useState('')
 
   const latest = scan.latestSignal
   const signals = scan.signals || []
@@ -93,11 +94,12 @@ export default function OriginalScanner({ onRefreshMarket }) {
     }
   }
 
-  async function pollStatus(limit = 24) {
+  async function pollStatus(after, limit = 24) {
     for (let attempt = 0; attempt < limit; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 5000))
       try {
-        const response = await fetch(`/api/original-scan-status?t=${Date.now()}`, { cache: 'no-store' })
+        const query = after ? `&after=${encodeURIComponent(after)}` : ''
+        const response = await fetch(`/api/original-scan-status?t=${Date.now()}${query}`, { cache: 'no-store' })
         const data = await response.json()
         setWorkflow(data)
         if (data.status === 'completed') {
@@ -120,6 +122,8 @@ export default function OriginalScanner({ onRefreshMarket }) {
   }
 
   async function startOriginalScan() {
+    const startedAt = new Date().toISOString()
+    setScanStartedAt(startedAt)
     setScanning(true)
     setPhaseIndex(0)
     setMessage('Starting original bot scan workflow...')
@@ -129,7 +133,7 @@ export default function OriginalScanner({ onRefreshMarket }) {
       const data = await response.json()
       if (!response.ok) throw new Error(data.message || 'Failed to start original scan')
       setMessage(data.message || 'Original bot scan started.')
-      pollStatus()
+      pollStatus(startedAt)
     } catch (error) {
       setScanning(false)
       setMessage(error.message || 'Unable to start original bot scan.')
@@ -158,7 +162,7 @@ export default function OriginalScanner({ onRefreshMarket }) {
       <ScannerStage scanning={scanning} phaseIndex={phaseIndex} />
 
       <section className="scanner-actions panel">
-        <div><span className="eyebrow">Control center</span><h2>Original Signal Runner</h2><p>{message}</p></div>
+        <div><span className="eyebrow">Control center</span><h2>Original Signal Runner</h2><p>{message}</p>{scanStartedAt && <small className="scan-started">Started: {formatDate(scanStartedAt)}</small>}</div>
         <div className="action-row"><button className="run-btn" onClick={startOriginalScan} disabled={scanning}>{scanning ? <Loader2 className="spin" size={16} /> : <Play size={16} />} Run Original Bot Scan</button><button className="secondary-btn" onClick={loadOriginalSnapshot}><RefreshCw size={16} /> Reload Result</button>{onRefreshMarket && <button className="secondary-btn" onClick={onRefreshMarket}><RefreshCw size={16} /> Refresh Market UI</button>}{runUrl && <a className="secondary-link" href={runUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Open Workflow</a>}</div>
       </section>
 
