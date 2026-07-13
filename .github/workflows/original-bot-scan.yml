@@ -36,7 +36,22 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scripts/run_original_bot_scan_once.py
 
+      - name: Verify original scan output
+        if: always()
+        run: |
+          test -s frontend/public/data/original-bot-scan.json
+          python -m json.tool frontend/public/data/original-bot-scan.json > /tmp/original-bot-scan.pretty.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('frontend/public/data/original-bot-scan.json').read_text())
+          print('mode:', data.get('status', {}).get('mode'))
+          print('symbols:', data.get('summary', {}).get('symbolsScanned'))
+          print('best:', data.get('summary', {}).get('bestSymbol'), data.get('summary', {}).get('bestScore'))
+          PY
+
       - name: Upload original bot scan artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: original-bot-scan
