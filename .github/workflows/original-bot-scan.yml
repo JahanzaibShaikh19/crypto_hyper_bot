@@ -1,0 +1,51 @@
+name: Original Bot Scan
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: original-bot-scan
+  cancel-in-progress: false
+
+jobs:
+  run-original-bot-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install bot dependencies
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          python -m pip install -r requirements.txt
+
+      - name: Run original one-shot bot scan
+        env:
+          WATCHLIST: BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,AVAXUSDT
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/run_original_bot_scan_once.py
+
+      - name: Upload original bot scan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-bot-scan
+          path: frontend/public/data/original-bot-scan.json
+          if-no-files-found: error
+
+      - name: Commit latest original bot scan snapshot
+        uses: stefanzweifel/git-auto-commit-action@v5
+        continue-on-error: true
+        with:
+          commit_message: "chore(data): refresh original bot scan snapshot"
+          file_pattern: frontend/public/data/original-bot-scan.json
