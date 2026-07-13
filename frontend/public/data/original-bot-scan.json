@@ -1,15 +1,22 @@
 {
-  "generatedAt": "never",
+  "generatedAt": "2026-07-13T10:08:47Z",
+  "startedAt": "2026-07-13T10:07:46Z",
   "source": "original-python-master-engine",
   "status": {
-    "mode": "waiting",
-    "message": "No original bot scan has been run yet."
+    "mode": "degraded",
+    "message": "Original bot scan completed but produced no symbol results."
   },
   "summary": {
-    "watchlist": ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "AVAXUSDT"],
+    "watchlist": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT",
+      "BNBUSDT",
+      "AVAXUSDT"
+    ],
     "symbolsScanned": 0,
     "signalsFired": 0,
-    "bestSymbol": "—",
+    "bestSymbol": "\u2014",
     "bestDirection": "NO_TRADE",
     "bestScore": "+0.0",
     "errors": []
@@ -17,14 +24,39 @@
   "latestSignal": null,
   "signals": [],
   "pipelines": [
-    { "name": "Technical", "score": 0, "rawScore": 0, "tone": "flat" },
-    { "name": "Correlation", "score": 0, "rawScore": 0, "tone": "flat" },
-    { "name": "Fundamental", "score": 0, "rawScore": 0, "tone": "flat" },
-    { "name": "Sentiment", "score": 0, "rawScore": 0, "tone": "flat" },
-    { "name": "Events", "score": 0, "rawScore": 0, "tone": "flat" }
+    {
+      "name": "Technical",
+      "score": 0.0,
+      "rawScore": 0.0,
+      "tone": "flat"
+    },
+    {
+      "name": "Correlation",
+      "score": 0.0,
+      "rawScore": 0.0,
+      "tone": "flat"
+    },
+    {
+      "name": "Fundamental",
+      "score": 0.0,
+      "rawScore": 0.0,
+      "tone": "flat"
+    },
+    {
+      "name": "Sentiment",
+      "score": 0.0,
+      "rawScore": 0.0,
+      "tone": "flat"
+    },
+    {
+      "name": "Events",
+      "score": 0.0,
+      "rawScore": 0.0,
+      "tone": "flat"
+    }
   ],
   "system": {
     "runner": "github-actions-one-shot",
-    "nextStep": "Run original bot scan from the Signals page."
+    "nextStep": "Review latest signal and risk/invalidation context."
   }
 }
