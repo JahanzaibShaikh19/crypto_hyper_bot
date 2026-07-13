@@ -6,11 +6,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: signal-snapshot
+  cancel-in-progress: true
 
 jobs:
   generate-dashboard-data:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
@@ -18,13 +23,18 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Generate dashboard signal snapshot
+      - name: Try generating dashboard snapshot
         env:
           WATCHLIST: BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,AVAXUSDT
+        continue-on-error: true
         run: python scripts/generate_dashboard_data.py
 
-      - name: Commit updated dashboard data
-        uses: stefanzweifel/git-auto-commit-action@v5
+      - name: Ensure dashboard snapshot exists
+        run: python scripts/ensure_dashboard_snapshot.py
+
+      - name: Upload dashboard snapshot artifact
+        uses: actions/upload-artifact@v4
         with:
-          commit_message: "chore(data): refresh dashboard signal snapshot"
-          file_pattern: frontend/public/data/dashboard.json
+          name: dashboard-snapshot
+          path: frontend/public/data/dashboard.json
+          if-no-files-found: error
