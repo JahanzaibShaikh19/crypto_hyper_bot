@@ -4,6 +4,7 @@ import App from './App.jsx'
 import './styles.css'
 import './ops.css'
 import './pages.css'
+import './original-scan.css'
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
