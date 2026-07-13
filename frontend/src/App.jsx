@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Activity,
   BarChart3,
   Bell,
+  Bot,
   CandlestickChart,
   Gauge,
   LineChart,
@@ -12,6 +13,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  Target,
   TrendingDown,
   TrendingUp,
   Zap,
@@ -24,7 +26,7 @@ const fallback = {
     { label: 'BTCUSDT', value: '—', change: '—', tone: 'flat' },
     { label: 'ETHUSDT', value: '—', change: '—', tone: 'flat' },
     { label: 'BTC.D', value: '—', change: '—', tone: 'flat' },
-    { label: 'Fear & Greed', value: '—', change: '—', tone: 'flat' },
+    { label: 'Source', value: '—', change: '—', tone: 'flat' },
   ],
   signals: [],
   watchlist: [],
@@ -33,6 +35,19 @@ const fallback = {
   riskPlan: { entryZone: '—', stopLoss: '—', targets: '—', rr: '—', note: 'Waiting for live data.' },
   performance: { winRate: '—', tracked: '0', avgMove: '—', bestPair: '—' },
   system: { dataFreshness: 'loading', nextUpdate: 'Live API on refresh' },
+}
+
+const pages = [
+  { key: 'dashboard', label: 'Dashboard', icon: Gauge },
+  { key: 'signals', label: 'Signals', icon: LineChart },
+  { key: 'pipelines', label: 'Pipelines', icon: RadioTower },
+  { key: 'performance', label: 'Performance', icon: BarChart3 },
+]
+
+function formatDate(value) {
+  const time = Date.parse(value)
+  if (!Number.isFinite(time)) return value || '—'
+  return new Date(time).toLocaleString()
 }
 
 function StatCard({ stat }) {
@@ -45,10 +60,14 @@ function ToneIcon({ tone }) {
   return <Activity size={16} />
 }
 
+function DirectionPill({ signal }) {
+  return <span className={`direction ${signal?.tone || 'flat'}`}><ToneIcon tone={signal?.tone} /> {signal?.direction || 'WAIT'}</span>
+}
+
 function SignalCard({ signal, active }) {
   return (
     <article className={`signal-card ${active ? 'active' : ''}`}>
-      <div className="signal-head"><div><span className="muted small">Signal</span><h3>{signal.symbol}</h3></div><span className={`direction ${signal.tone || 'flat'}`}><ToneIcon tone={signal.tone} /> {signal.direction}</span></div>
+      <div className="signal-head"><div><span className="muted small">Bot Signal</span><h3>{signal.symbol}</h3></div><DirectionPill signal={signal} /></div>
       <div className="signal-grid"><div><span>Score</span><strong>{signal.score}</strong></div><div><span>Confidence</span><strong>{signal.confidence}</strong></div><div><span>Price</span><strong>{signal.price}</strong></div></div>
       <p>{signal.reason}</p>
     </article>
@@ -82,10 +101,73 @@ function RiskPanel({ riskPlan }) {
   return <section className="panel risk-panel"><div className="panel-head compact"><div><span className="eyebrow">Execution discipline</span><h2>Risk Plan</h2></div><ShieldCheck className="accent" /></div><div className="risk-box"><div><span>Entry Zone</span><strong>{riskPlan.entryZone}</strong></div><div><span>Stop Loss</span><strong>{riskPlan.stopLoss}</strong></div><div><span>TP1 / TP2</span><strong>{riskPlan.targets}</strong></div><div><span>R:R</span><strong>{riskPlan.rr}</strong></div></div><p className="panel-note">{riskPlan.note}</p></section>
 }
 
+function BotSignalPanel({ signal, generatedAt }) {
+  if (!signal) return <section className="panel bot-signal"><Bot className="accent" /><h2>Latest Bot Signal</h2><p>No signal generated yet. Run live scan to calculate the latest setup.</p></section>
+  return (
+    <section className="panel bot-signal">
+      <div className="panel-head compact"><div><span className="eyebrow">Latest bot output</span><h2>{signal.symbol}</h2></div><DirectionPill signal={signal} /></div>
+      <div className="bot-signal-grid"><div><span>Score</span><strong>{signal.score}</strong></div><div><span>Confidence</span><strong>{signal.confidence}</strong></div><div><span>Price</span><strong>{signal.price}</strong></div><div><span>Generated</span><strong>{formatDate(generatedAt)}</strong></div></div>
+      <p>{signal.reason}</p>
+    </section>
+  )
+}
+
+function EmptyPanel({ title, copy }) {
+  return <section className="panel empty-panel"><Sparkles className="accent" /><h2>{title}</h2><p>{copy}</p></section>
+}
+
+function DashboardPage({ dashboard, signals, pipelines, botSignal }) {
+  return (
+    <section className="main-grid">
+      <div className="left-stack"><ChartPanel chart={dashboard.chart} /><BotSignalPanel signal={botSignal} generatedAt={dashboard.generatedAt} />{signals.length ? <section className="signals-grid">{signals.slice(0, 3).map((signal, index) => <SignalCard key={signal.symbol} signal={signal} active={index === 0} />)}</section> : <EmptyPanel title="No signals yet" copy="Run live scan manually or wait for live API refresh." />}</div>
+      <div className="right-stack"><SystemPanel dashboard={dashboard} /><RiskPanel riskPlan={dashboard.riskPlan || fallback.riskPlan} /><PipelinesPanel pipelines={pipelines} /><PerformanceMini dashboard={dashboard} signals={signals} /></div>
+    </section>
+  )
+}
+
+function SignalsPage({ dashboard, signals, botSignal }) {
+  return (
+    <section className="page-stack"><BotSignalPanel signal={botSignal} generatedAt={dashboard.generatedAt} />{signals.length ? <div className="signal-table panel"><div className="table-head"><span>Pair</span><span>Signal</span><span>Score</span><span>Confidence</span><span>Price</span><span>Reason</span></div>{signals.map((signal) => <div className="table-row" key={signal.symbol}><strong>{signal.symbol}</strong><DirectionPill signal={signal} /><span>{signal.score}</span><span>{signal.confidence}</span><span>{signal.price}</span><p>{signal.reason}</p></div>)}</div> : <EmptyPanel title="Signals unavailable" copy="Live API did not return signal data yet." />}</section>
+  )
+}
+
+function PipelinesPanel({ pipelines }) {
+  return <section className="panel"><div className="panel-head compact"><div><span className="eyebrow">5-pipeline score</span><h2>Confluence</h2></div><Zap className="accent" /></div><div className="pipeline-list">{pipelines.map((item) => <PipelineBar item={item} key={item.name} />)}</div></section>
+}
+
+function PipelinesPage({ dashboard, pipelines, botSignal }) {
+  const rawPipelines = botSignal?.pipelines || {}
+  return (
+    <section className="page-stack"><BotSignalPanel signal={botSignal} generatedAt={dashboard.generatedAt} /><div className="pipeline-page-grid"><PipelinesPanel pipelines={pipelines} /><section className="panel"><div className="panel-head compact"><div><span className="eyebrow">Pipeline detail</span><h2>Decision Breakdown</h2></div><RadioTower className="accent" /></div><div className="detail-list">{Object.entries(rawPipelines).map(([name, value]) => <div key={name}><span>{name}</span><strong className={Number(value) >= 0 ? 'green-text' : 'red-text'}>{Number(value).toFixed(2)}</strong></div>)}</div></section></div></section>
+  )
+}
+
+function PerformanceMini({ dashboard, signals }) {
+  const actionable = signals.filter((s) => s.direction !== 'WAIT').length
+  const longs = signals.filter((s) => s.direction.includes('LONG')).length
+  const shorts = signals.filter((s) => s.direction.includes('SHORT')).length
+  return <section className="panel performance-panel"><div className="panel-head compact"><div><span className="eyebrow">Live performance proxy</span><h2>Market Health</h2></div><Sparkles className="accent" /></div><div className="performance-grid"><div><span>Actionable</span><strong>{actionable}</strong></div><div><span>Long Bias</span><strong>{longs}</strong></div><div><span>Short Bias</span><strong>{shorts}</strong></div><div><span>Best Pair</span><strong>{dashboard.performance?.bestPair || signals[0]?.symbol?.replace('USDT', '') || '—'}</strong></div></div></section>
+}
+
+function PerformancePage({ dashboard, signals, botSignal }) {
+  const actionable = signals.filter((s) => s.direction !== 'WAIT')
+  const avgConfidence = signals.length ? Math.round(signals.reduce((sum, s) => sum + Number(String(s.confidence).replace('%', '') || 0), 0) / signals.length) : 0
+  const longBias = signals.filter((s) => s.direction.includes('LONG')).length
+  const shortBias = signals.filter((s) => s.direction.includes('SHORT')).length
+  return (
+    <section className="page-stack"><BotSignalPanel signal={botSignal} generatedAt={dashboard.generatedAt} /><section className="metrics-grid"><StatCard stat={{ label: 'Actionable Signals', value: String(actionable.length), change: 'live', tone: actionable.length ? 'up' : 'flat' }} /><StatCard stat={{ label: 'Avg Confidence', value: `${avgConfidence}%`, change: 'signal set', tone: avgConfidence >= 60 ? 'up' : 'flat' }} /><StatCard stat={{ label: 'Long Bias', value: String(longBias), change: 'market', tone: longBias > shortBias ? 'up' : 'flat' }} /><StatCard stat={{ label: 'Short Bias', value: String(shortBias), change: 'market', tone: shortBias > longBias ? 'down' : 'flat' }} /></section><section className="panel"><div className="panel-head compact"><div><span className="eyebrow">Production note</span><h2>Outcome Tracking</h2></div><Target className="accent" /></div><p className="panel-note">Live performance page is functional from current bot signals. Historical win-rate will become real once the Python bot outcome tracker writes completed 1H/4H/24H results to an API-accessible store.</p></section></section>
+  )
+}
+
+function SystemPanel({ dashboard }) {
+  return <section className="panel system-panel"><div className="panel-head compact"><div><span className="eyebrow">Automation</span><h2>System Status</h2></div><RadioTower className="accent" /></div><div className="system-list"><div><span>Mode</span><strong>{dashboard.status?.mode}</strong></div><div><span>Last refresh</span><strong>{formatDate(dashboard.generatedAt)}</strong></div><div><span>Next update</span><strong>{dashboard.system?.nextUpdate}</strong></div></div></section>
+}
+
 function App() {
   const [dashboard, setDashboard] = useState(fallback)
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
+  const [activePage, setActivePage] = useState('dashboard')
 
   async function fetchLiveDashboard() {
     const response = await fetch(`/api/market?t=${Date.now()}`, { cache: 'no-store' })
@@ -123,7 +205,7 @@ function App() {
     try {
       const data = await fetchLiveDashboard()
       setDashboard({ ...fallback, ...data })
-      setMessage('Live scan complete. Prices and signals refreshed.')
+      setMessage('Live scan complete. Prices, signals, pipelines and performance refreshed.')
     } catch {
       setMessage('Live scan failed. Check Vercel function logs.')
     }
@@ -136,23 +218,22 @@ function App() {
   }, [])
 
   const signals = dashboard.signals || []
+  const botSignal = signals[0]
   const watchlist = dashboard.watchlist || []
   const pipelines = dashboard.pipelines?.length ? dashboard.pipelines : fallback.pipelines
-  const generatedAt = dashboard.generatedAt ? new Date(dashboard.generatedAt).toLocaleString() : '—'
+  const pageTitle = pages.find((page) => page.key === activePage)?.label || 'Dashboard'
+
+  const page = useMemo(() => {
+    if (activePage === 'signals') return <SignalsPage dashboard={dashboard} signals={signals} botSignal={botSignal} />
+    if (activePage === 'pipelines') return <PipelinesPage dashboard={dashboard} pipelines={pipelines} botSignal={botSignal} />
+    if (activePage === 'performance') return <PerformancePage dashboard={dashboard} signals={signals} botSignal={botSignal} />
+    return <DashboardPage dashboard={dashboard} signals={signals} pipelines={pipelines} botSignal={botSignal} />
+  }, [activePage, dashboard, signals, pipelines, botSignal])
 
   return (
     <main className="app-shell">
-      <aside className="sidebar">
-        <div className="brand"><div className="logo"><CandlestickChart size={22} /></div><div><strong>Hyper Bot</strong><span>Trading intelligence</span></div></div>
-        <nav><a className="active"><Gauge size={18} /> Dashboard</a><a><LineChart size={18} /> Signals</a><a><BarChart3 size={18} /> Performance</a><a><RadioTower size={18} /> Pipelines</a></nav>
-        <div className="watchlist"><span className="eyebrow">Watchlist</span>{watchlist.map(([coin, score, mode]) => <div className="watch-row" key={coin}><strong>{coin}</strong><span>{score}</span><small>{mode}</small></div>)}</div>
-      </aside>
-
-      <section className="content">
-        <header className="topbar"><div><span className="eyebrow">Research dashboard</span><h1>Market Intelligence</h1><p className="topbar-subtitle">{message || dashboard.status?.message}</p></div><div className="topbar-actions"><button className="secondary-btn" onClick={loadDashboard}>{loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />} Refresh</button><button className="run-btn" onClick={runScan}><Play size={16} /> Run Live Scan</button><button className="notify"><Bell size={18} /> {dashboard.system?.dataFreshness || 'Live'}</button></div></header>
-        <section className="stats-grid">{dashboard.marketStats.map((stat) => <StatCard stat={stat} key={stat.label} />)}</section>
-        <section className="main-grid"><div className="left-stack"><ChartPanel chart={dashboard.chart} />{signals.length ? <section className="signals-grid">{signals.map((signal, index) => <SignalCard key={signal.symbol} signal={signal} active={index === 0} />)}</section> : <section className="panel empty-panel"><Sparkles className="accent" /><h2>No signals yet</h2><p>Run scan manually or wait for live API.</p></section>}</div><div className="right-stack"><section className="panel system-panel"><div className="panel-head compact"><div><span className="eyebrow">Automation</span><h2>System Status</h2></div><RadioTower className="accent" /></div><div className="system-list"><div><span>Mode</span><strong>{dashboard.status?.mode}</strong></div><div><span>Last refresh</span><strong>{generatedAt}</strong></div><div><span>Next update</span><strong>{dashboard.system?.nextUpdate}</strong></div></div></section><RiskPanel riskPlan={dashboard.riskPlan || fallback.riskPlan} /><section className="panel"><div className="panel-head compact"><div><span className="eyebrow">5-pipeline score</span><h2>Confluence</h2></div><Zap className="accent" /></div><div className="pipeline-list">{pipelines.map((item) => <PipelineBar item={item} key={item.name} />)}</div></section><section className="panel performance-panel"><div className="panel-head compact"><div><span className="eyebrow">Outcome tracking</span><h2>Performance</h2></div><Sparkles className="accent" /></div><div className="performance-grid"><div><span>Win Rate</span><strong>{dashboard.performance?.winRate}</strong></div><div><span>Tracked</span><strong>{dashboard.performance?.tracked}</strong></div><div><span>Avg Move</span><strong className="green-text">{dashboard.performance?.avgMove}</strong></div><div><span>Best Pair</span><strong>{dashboard.performance?.bestPair}</strong></div></div></section></div></section>
-      </section>
+      <aside className="sidebar"><div className="brand"><div className="logo"><CandlestickChart size={22} /></div><div><strong>Hyper Bot</strong><span>Trading intelligence</span></div></div><nav>{pages.map(({ key, label, icon: Icon }) => <button key={key} className={activePage === key ? 'active' : ''} onClick={() => setActivePage(key)}><Icon size={18} /> {label}</button>)}</nav><div className="watchlist"><span className="eyebrow">Watchlist</span>{watchlist.map(([coin, score, mode]) => <div className="watch-row" key={coin}><strong>{coin}</strong><span>{score}</span><small>{mode}</small></div>)}</div></aside>
+      <section className="content"><header className="topbar"><div><span className="eyebrow">{pageTitle}</span><h1>Market Intelligence</h1><p className="topbar-subtitle">{message || dashboard.status?.message}</p></div><div className="topbar-actions"><button className="secondary-btn" onClick={loadDashboard}>{loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />} Refresh</button><button className="run-btn" onClick={runScan}><Play size={16} /> Run Live Scan</button><button className="notify"><Bell size={18} /> {dashboard.system?.dataFreshness || 'Live'}</button></div></header><section className="stats-grid">{dashboard.marketStats.map((stat) => <StatCard stat={stat} key={stat.label} />)}</section>{page}</section>
     </main>
   )
 }
