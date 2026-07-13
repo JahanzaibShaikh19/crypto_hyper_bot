@@ -83,14 +83,25 @@ export default function OriginalScanner({ onRefreshMarket }) {
   const pipelines = scan.pipelines || []
   const runUrl = workflow?.htmlUrl
 
+  async function readJson(url) {
+    const response = await fetch(url, { cache: 'no-store' })
+    if (!response.ok) throw new Error(`Failed to load ${url}`)
+    return response.json()
+  }
+
   async function loadOriginalSnapshot() {
     try {
-      const response = await fetch(`/data/original-bot-scan.json?t=${Date.now()}`, { cache: 'no-store' })
-      if (!response.ok) throw new Error('Original bot snapshot not found')
-      const data = await response.json()
+      const data = await readJson(`/api/original-scan-result?t=${Date.now()}`)
       setScan({ ...initialScan, ...data })
+      setMessage(data.status?.message || 'Latest original bot result loaded from GitHub.')
     } catch {
-      setMessage('Original bot snapshot is not available yet.')
+      try {
+        const data = await readJson(`/data/original-bot-scan.json?t=${Date.now()}`)
+        setScan({ ...initialScan, ...data })
+        setMessage('Loaded bundled original bot snapshot fallback.')
+      } catch {
+        setMessage('Original bot snapshot is not available yet.')
+      }
     }
   }
 
@@ -106,7 +117,7 @@ export default function OriginalScanner({ onRefreshMarket }) {
           setScanning(false)
           setPhaseIndex(phases.length - 1)
           setMessage(data.conclusion === 'success' ? 'Original bot scan completed. Loading latest signal snapshot...' : `Original bot scan finished with ${data.conclusion}.`)
-          await new Promise((resolve) => setTimeout(resolve, 2500))
+          await new Promise((resolve) => setTimeout(resolve, 3500))
           await loadOriginalSnapshot()
           return
         }
